@@ -1,4 +1,4 @@
-import {useState,useEffect,useRef} from 'react';import {api,receipt} from './App.jsx';import {CameraScan} from './Extra2.jsx';import {isNet,qget,qadd,syncQueue,cacheGet,cacheSet} from './offline.js';import {build,printBytes,connectSerial,loadCfg} from './printer.js';
+import {useState,useEffect,useRef} from 'react';import {Search,Moon,Sun,X} from 'lucide-react';import {api,receipt} from './App.jsx';import {CameraScan} from './Extra2.jsx';import {isNet,qget,qadd,syncQueue,cacheGet,cacheSet} from './offline.js';import {build,printBytes,connectSerial,loadCfg} from './printer.js';
 const r2=n=>Math.round(n*100)/100,tk=n=>'৳'+Number(n||0).toLocaleString('en-IN');
 const beep=ok=>{try{const c=new AudioContext(),o=c.createOscillator();o.frequency.value=ok?880:200;o.connect(c.destination);o.start();o.stop(c.currentTime+(ok?.07:.3))}catch{}};
 const M={cash:'ক্যাশ',card:'কার্ড',bkash:'বিকাশ',nagad:'নগদ',due:'বাকি'};
@@ -7,7 +7,7 @@ export default function Sell(){
  const [disc,setDisc]=useState(0),[code,setCode]=useState(''),[applied,setApplied]=useState(''),[cd,setCd]=useState(0),[gcode,setGcode]=useState(''),[gApplied,setGApplied]=useState(''),[gift,setGift]=useState(0);
  const [method,setMethod]=useState('cash'),[tender,setTender]=useState(''),[key,setKey]=useState(()=>crypto.randomUUID()),[msg,setMsg]=useState(null),[last,setLast]=useState(null),[busy,setBusy]=useState(false);
  const [held,setHeld]=useState(()=>JSON.parse(localStorage.getItem('held')||'[]')),[showHeld,setShowHeld]=useState(false),[light,setLight]=useState(()=>localStorage.getItem('posTheme')==='light');
- const sr=useRef(),H=useRef(),focus=()=>sr.current&&sr.current.focus();
+ const [payOpen,setPayOpen]=useState(false),[discOpen,setDiscOpen]=useState(false);const sr=useRef(),H=useRef(),focus=()=>sr.current&&sr.current.focus();
  const [net,setNet]=useState(navigator.onLine),[pend,setPend]=useState(qget().length),[cfg,setCfg]=useState(null),[ser,setSer]=useState(false);
  const load=()=>{api('/products').then(x=>{setItems(x);cacheSet('p',x)}).catch(()=>setItems(cacheGet('p')));api('/customers').then(x=>{setCs(x);cacheSet('c',x)}).catch(()=>setCs(cacheGet('c')))};
  const sync=async()=>{if(!qget().length)return;const r=await syncQueue();setPend(qget().length);if(r.failed.length)setMsg({t:'সিঙ্ক ব্যর্থ (ম্যানেজারকে জানান): '+r.failed.map(f=>f.err).join(' | '),err:1});else if(r.done)setMsg({t:`${r.done}টি অফলাইন বিক্রি সিঙ্ক হয়েছে`});if(r.done)load()};
@@ -24,7 +24,7 @@ export default function Sell(){
  const scan=c=>{const m=find(c);m?add(m):(beep(0),setMsg({t:'পণ্য পাওয়া যায়নি: '+c,err:1}))};
  const list=items.filter(i=>(!cat||i.category===cat)&&(!q||(i.name+i.sku+(i.barcode||'')+(i.size||'')+(i.color||'')).toLowerCase().includes(q.toLowerCase()))).slice(0,150);
  const cats=[...new Set(items.map(i=>i.category).filter(Boolean))];
- const clear=()=>{setCart({});setDisc(0);setCode('');setApplied('');setCd(0);setGcode('');setGApplied('');setGift(0);setTender('');setCust('');setMethod('cash');setKey(crypto.randomUUID());setQ('');focus()};
+ const clear=()=>{setPayOpen(false);setDiscOpen(false);setCart({});setDisc(0);setCode('');setApplied('');setCd(0);setGcode('');setGApplied('');setGift(0);setTender('');setCust('');setMethod('cash');setKey(crypto.randomUUID());setQ('');focus()};
  const hold=()=>{if(!lines.length)return;const h=[...held,{cart,cust,t:Date.now()}];localStorage.setItem('held',JSON.stringify(h));setHeld(h);clear();setMsg({t:'বিল হোল্ড হয়েছে (F6 দিয়ে ফিরিয়ে আনুন)'})};
  const recall=i=>{const h=held[i];setCart(h.cart);setCust(h.cust);const r=held.filter((_,k)=>k!==i);localStorage.setItem('held',JSON.stringify(r));setHeld(r);setShowHeld(false);focus()};
  const pay=async()=>{if(busy||!lines.length)return;if(method==='due'&&!cust)return setMsg({t:'বাকির জন্য কাস্টমার বাছুন',err:1});if(short)return setMsg({t:'প্রাপ্ত টাকা কম',err:1});
@@ -40,30 +40,53 @@ export default function Sell(){
      await finish({invoice:'OFF-'+Date.now().toString(36).toUpperCase(),change:Math.max(0,r2(given-due)),due:method==='due'?r2(due-(tender===''?0:+tender)):0},true)}}
    else{setMsg({t:e.message,err:1});beep(0)}}
   setBusy(false)};
- H.current={pay,hold};
- useEffect(()=>{const k=e=>{if(e.key==='F2'){e.preventDefault();focus()}else if(e.key==='F4'){e.preventDefault();H.current.hold()}else if(e.key==='F6'){e.preventDefault();setShowHeld(s=>!s)}else if(e.key==='F9'){e.preventDefault();H.current.pay()}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[]);
+ H.current={pay,hold,f9:()=>payOpen?pay():(lines.length&&setPayOpen(true))};
+ useEffect(()=>{const k=e=>{if(e.key==='F2'){e.preventDefault();focus()}else if(e.key==='F4'){e.preventDefault();H.current.hold()}else if(e.key==='F6'){e.preventDefault();setShowHeld(s=>!s)}else if(e.key==='F9'){e.preventDefault();H.current.f9()}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[]);
  const shift=async a=>{const s=prompt(a==='open'?'ওপেনিং ক্যাশ (৳)':'ড্রয়ারে এখন মোট ক্যাশ (৳)');if(s===null||isNaN(+s))return;try{const r=await api('/shifts/'+a,{method:'POST',body:a==='open'?{opening:+s}:{closing:+s}});setMsg({t:a==='open'?'শিফট চালু হয়েছে':`প্রত্যাশিত ${tk(r.expected)} · গণনা ${tk(r.counted)} · গরমিল ${tk(r.difference)}`})}catch(e){setMsg({t:e.message,err:1})}};
  const applyCode=()=>code&&setApplied(code.trim());
  const applyGift=async()=>{try{const g=await api('/giftcards/'+encodeURIComponent(gcode.trim()));setGift(g.balance);setGApplied(g.code)}catch(e){setMsg({t:e.message,err:1})}};
  const quick=[...new Set([due,Math.ceil(due/100)*100,Math.ceil(due/500)*500,Math.ceil(due/1000)*1000,2000,5000].filter(x=>x>=due&&x>0))].slice(0,5);
- return <div className={'pos'+(light?' light':'')} onClick={e=>{if(['DIV','H4'].includes(e.target.tagName))focus()}}>
-  <section className="L"><div className="bar"><input ref={sr} className="scan" placeholder="🔍 বার্কোড স্ক্যান করুন বা নাম/SKU লিখে Enter (F2)" value={q} onChange={e=>setQ(e.target.value)}
-    onKeyDown={e=>{if(e.key==='Enter'&&q){const m=find(q)||(list.length===1&&list[0]);m?(add(m),setQ('')):(beep(0),setMsg({t:'পণ্য পাওয়া যায়নি',err:1}))}if(e.key==='Escape')setQ('')}}/>
-   <CameraScan onCode={scan}/><button onClick={()=>{localStorage.setItem('posTheme',light?'dark':'light');setLight(!light)}}>{light?'🌙':'☀️'}</button></div>
-   <div className="chips"><button className={!cat?'on':''} onClick={()=>setCat('')}>সব</button>{cats.map(c=><button key={c} className={cat===c?'on':''} onClick={()=>setCat(c)}>{c}</button>)}</div>
-   <div className="grid">{list.map(p=><button key={p.id} className="tile" disabled={p.stock<=0} onClick={()=>{add(p);focus()}}><b>{p.name}</b><span>{p.size} {p.color}</span><em>{tk(p.price)}</em><small className={p.stock<=p.low_stock?'low':''}>স্টক {p.stock}</small>{cart[p.id]>0&&<i>{cart[p.id]}</i>}</button>)}</div></section>
-  <aside className="R"><div className="top"><b>বর্তমান বিল <span className={'net '+(net?'on':'off')}>{net?'● অনলাইন':'● অফলাইন'}</span>{pend>0&&<button onClick={sync}>⟳ সিঙ্ক ({pend})</button>}</b><span><button onClick={async()=>{try{await connectSerial();setSer(true);setMsg({t:'প্রিন্টার সংযুক্ত'})}catch{setMsg({t:'সংযোগ হয়নি (Chrome/Edge + HTTPS লাগবে; অথবা সার্ভারে PRINTER_HOST সেট করুন)',err:1})}}}>🖨 {ser?'সংযুক্ত':cfg?.network?'LAN':'প্রিন্টার'}</button><button onClick={()=>shift('open')}>শিফট খুলুন</button><button onClick={()=>shift('close')}>শিফট বন্ধ</button></span></div>
-   {msg&&<div className={'msg'+(msg.err?' err':'')} onClick={()=>setMsg(null)}>{msg.t}{msg.change!=null&&<div className="chg">ফেরত দিন: {tk(msg.change)}{msg.due>0&&` · বাকি ${tk(msg.due)}`}</div>}{last&&!msg.err&&msg.change!=null&&<button onClick={e=>{e.stopPropagation();receipt(last.r,last.lines,last.total,last.vat,last.disc)}}>🖨 রসিদ প্রিন্ট</button>}</div>}
-   <div className="cust"><select value={cust} onChange={e=>setCust(e.target.value)}><option value="">ওয়াক-ইন কাস্টমার</option>{cs.map(c=><option key={c.id} value={c.id}>{c.name} {c.phone||''}{c.due>0?` (বাকি ${c.due})`:''}</option>)}</select>
-    <button onClick={async()=>{const n=prompt('কাস্টমারের নাম');if(!n)return;const ph=prompt('ফোন (ঐচ্ছিক)')||undefined;try{const r=await api('/customers',{method:'POST',body:{name:n,phone:ph}});await load();setCust(String(r.id))}catch(e){setMsg({t:e.message,err:1})}}}>＋</button></div>
-   <div className="lines">{!lines.length&&<p className="empty">পণ্য স্ক্যান করুন বা ট্যাপ করুন</p>}{lines.map(l=><div key={l.p.id} className="line"><div><b>{l.p.name}</b> <small>{l.p.size} {l.p.color}</small><br/><small>{tk(l.p.price)} × {l.qty}</small></div>
-    <div className="qty"><button onClick={()=>setQty(l.p,l.qty-1)}>−</button><span>{l.qty}</span><button onClick={()=>setQty(l.p,l.qty+1)}>＋</button></div><b>{tk(l.p.price*l.qty)}</b></div>)}</div>
-   <div className="promo"><input placeholder="কুপন" value={code} onChange={e=>setCode(e.target.value)}/><button onClick={applyCode}>প্রয়োগ</button><input placeholder="গিফট কার্ড" value={gcode} onChange={e=>setGcode(e.target.value)}/><button onClick={applyGift}>প্রয়োগ</button>
-    <label>ছাড় ৳<input type="number" min="0" value={disc} onChange={e=>setDisc(+e.target.value)}/></label></div>
-   <div className="sum"><div><span>সাব-টোটাল</span><span>{tk(sub)}</span></div>{disc>0&&<div><span>ছাড়</span><span>−{tk(disc)}</span></div>}{cd>0&&<div><span>কুপন ({applied})</span><span>−{tk(cd)}</span></div>}<div><span>ভ্যাট</span><span>{tk(vat)}</span></div>{giftUse>0&&<div><span>গিফট কার্ড</span><span>−{tk(giftUse)}</span></div>}
-    <div className="tot"><span>পরিশোধযোগ্য</span><span>{tk(due)}</span></div></div>
-   <div className="meth">{Object.entries(M).map(([k,v])=><button key={k} className={method===k?'on':''} onClick={()=>{setMethod(k);setTender('')}}>{v}</button>)}</div>
-   {(method==='cash'||method==='due')&&<div className="cash"><input type="number" placeholder={method==='due'?'এখন কত দিল (ঐচ্ছিক)':'প্রাপ্ত টাকা'} value={tender} onChange={e=>setTender(e.target.value)}/>{method==='cash'&&<div className="q">{quick.map(x=><button key={x} onClick={()=>setTender(String(x))}>{x===due?'ঠিকঠাক':x}</button>)}</div>}{method==='cash'&&given>=due&&due>0&&<div className="chg">ফেরত: {tk(change)}</div>}</div>}
-   <div className="act"><button onClick={hold} disabled={!lines.length}>হোল্ড F4</button><button onClick={()=>setShowHeld(true)}>রিকল F6 ({held.length})</button><button onClick={clear}>বাতিল</button></div>
-   <button className="payb" disabled={!lines.length||busy} onClick={pay}>{busy?'...':`পেমেন্ট F9 — ${tk(due)}`}</button></aside>
-  {showHeld&&<div className="modal" onClick={()=>setShowHeld(false)}><div onClick={e=>e.stopPropagation()}><h4>হোল্ড করা বিল</h4>{!held.length&&<p>কোনো হোল্ড বিল নেই</p>}{held.map((h,i)=><button key={i} onClick={()=>recall(i)}>{new Date(h.t).toLocaleTimeString()} — {Object.keys(h.cart).length} আইটেম</button>)}</div></div>}</div>}
+ const addCust=async()=>{const n=prompt('কাস্টমারের নাম');if(!n)return;const ph=prompt('ফোন (ঐচ্ছিক)')||undefined;try{const r=await api('/customers',{method:'POST',body:{name:n,phone:ph}});await load();setCust(String(r.id))}catch(e){setMsg({t:e.message,err:1})}};
+ const connect=async()=>{try{await connectSerial();setSer(true);setMsg({t:'প্রিন্টার সংযুক্ত'})}catch{setMsg({t:'সংযোগ হয়নি (Chrome/Edge + HTTPS লাগবে; অথবা সার্ভারে PRINTER_HOST সেট করুন)',err:1})}};
+ const cname=cs.find(c=>String(c.id)===String(cust))?.name||'ওয়াক-ইন';
+ return <div className={'nx'+(light?' light':'')}>
+  <section className="cartp">
+   <div className="tabs"><div className="tab">কার্ট{lines.length>0&&<span className="badge">{lines.length}</span>}</div><span style={{flex:1}}/>
+    <span className={'net '+(net?'on':'off')}>{net?'● অনলাইন':'● অফলাইন'}</span>{pend>0&&<button className="tb" onClick={sync}>⟳ সিঙ্ক ({pend})</button>}</div>
+   <div className="cartbox">
+    <div className="toolbox"><select value={cust} onChange={e=>setCust(e.target.value)}><option value="">ওয়াক-ইন কাস্টমার</option>{cs.map(c=><option key={c.id} value={c.id}>{c.name} {c.phone||''}{c.due>0?` (বাকি ${c.due})`:''}</option>)}</select>
+     <button title="নতুন কাস্টমার" onClick={addCust}>＋</button><button onClick={()=>setShowHeld(true)}>রিকল ({held.length})</button><button onClick={()=>shift('open')}>শিফট খুলুন</button><button onClick={()=>shift('close')}>শিফট বন্ধ</button><button onClick={connect}>🖨 {ser?'সংযুক্ত':cfg?.network?'LAN':'প্রিন্টার'}</button></div>
+    {msg&&<div className={'msg'+(msg.err?' err':'')} onClick={()=>setMsg(null)}>{msg.t}{msg.change!=null&&<div className="chg">ফেরত দিন: {tk(msg.change)}{msg.due>0&&` · বাকি ${tk(msg.due)}`}</div>}{last&&!msg.err&&msg.change!=null&&<button onClick={e=>{e.stopPropagation();receipt(last.r,last.lines,last.total,last.vat,last.disc)}}>🖨 রসিদ প্রিন্ট</button>}</div>}
+    <div className="th"><div>পণ্য</div><div>পরিমাণ</div><div>মোট</div></div>
+    <div className="rows">{!lines.length&&<p className="empty">কার্ট খালি — পণ্য স্ক্যান করুন বা ট্যাপ করুন</p>}
+     {lines.map(l=><div key={l.p.id} className="row"><div><b>{l.p.name}</b> <small>{l.p.size} {l.p.color}</small><div className="lnk"><a className="rm" onClick={()=>setQty(l.p,0)}>মুছুন</a><span>{tk(l.p.price)}</span></div></div>
+      <div className="qty"><button onClick={()=>setQty(l.p,l.qty-1)}>−</button><b>{l.qty}</b><button onClick={()=>setQty(l.p,l.qty+1)}>＋</button></div><div className="tot">{tk(l.p.price*l.qty)}</div></div>)}</div>
+    <table className="sumt"><tbody>
+     <tr><td>কাস্টমার: <b>{cname}</b></td><td>সাব-টোটাল</td><td className="r">{tk(sub)}</td></tr>
+     <tr><td>কুপন: <b>{applied||'—'}</b>{cd>0&&` (−${tk(cd)})`}</td><td><a className="dl" onClick={()=>setDiscOpen(true)}>ডিসকাউন্ট</a></td><td className="r">{tk(disc)}</td></tr>
+     <tr><td>গিফট কার্ড: <b>{gApplied||'—'}</b></td><td>ভ্যাট</td><td className="r">{tk(vat)}</td></tr>
+     <tr className="gt"><td/><td>মোট</td><td className="r">{tk(total)}</td></tr></tbody></table>
+   </div>
+   <div className="bottom"><button className="b-pay" disabled={!lines.length} onClick={()=>setPayOpen(true)}>💳 পেমেন্ট <small>F9</small></button><button className="b-hold" disabled={!lines.length} onClick={hold}>⏸ হোল্ড <small>F4</small></button><button className="b-disc" disabled={!lines.length} onClick={()=>setDiscOpen(true)}>％ ডিসকাউন্ট</button><button className="b-void" disabled={!lines.length} onClick={clear}>✕ বাতিল</button></div>
+  </section>
+  <section className="gridp"><div className="gtool"><span className="ic"><Search size={16}/></span><span className="ic">▮▯▮</span>
+    <input ref={sr} className="scan" placeholder="বার্কোড স্ক্যান করুন বা নাম/SKU লিখে Enter (F2)" value={q} onChange={e=>setQ(e.target.value)}
+     onKeyDown={e=>{if(e.key==='Enter'&&q){const m=find(q)||(list.length===1&&list[0]);m?(add(m),setQ('')):(beep(0),setMsg({t:'পণ্য পাওয়া যায়নি',err:1}))}if(e.key==='Escape')setQ('')}}/>
+    <CameraScan onCode={scan}/><button className="ic" title="থিম" onClick={()=>{localStorage.setItem('posTheme',light?'dark':'light');setLight(!light)}}>{light?<Moon size={16}/>:<Sun size={16}/>}</button></div>
+   <div className="crumb"><a onClick={()=>setCat('')}>হোম</a>{cat&&<> › <b>{cat}</b></>}</div>
+   <div className="tiles">{!cat&&cats.map(c=><button key={c} className="tile catg" onClick={()=>setCat(c)}>📁<b>{c}</b></button>)}
+    {list.map(p=><button key={p.id} className="tile" disabled={p.stock<=0} onClick={()=>{add(p);focus()}}><b>{p.name}</b><span>{p.size} {p.color}</span><em>{tk(p.price)}</em><small className={p.stock<=p.low_stock?'low':''}>স্টক {p.stock}</small>{cart[p.id]>0&&<i>{cart[p.id]}</i>}</button>)}</div></section>
+  {payOpen&&<div className="mdl" onClick={()=>setPayOpen(false)}><div className="dlg pay" onClick={e=>e.stopPropagation()}>
+   <div className="dh"><b>পেমেন্ট</b><button onClick={()=>setPayOpen(false)}><X size={16}/></button></div>
+   <div className="pb"><div className="pm">{Object.entries(M).map(([k,v])=><button key={k} className={method===k?'on':''} onClick={()=>{setMethod(k);setTender('')}}>{v}</button>)}</div>
+    <div className="pr"><div className="due"><small>পরিশোধযোগ্য</small><b>{tk(due)}</b></div>
+     <div className="pf"><input placeholder="কুপন কোড" value={code} onChange={e=>setCode(e.target.value)}/><button onClick={applyCode}>প্রয়োগ</button><input placeholder="গিফট কার্ড" value={gcode} onChange={e=>setGcode(e.target.value)}/><button onClick={applyGift}>প্রয়োগ</button></div>
+     {(method==='cash'||method==='due')&&<><input className="amt" type="number" autoFocus placeholder={method==='due'?'এখন কত দিল (ঐচ্ছিক)':'প্রাপ্ত টাকা'} value={tender} onChange={e=>setTender(e.target.value)}/>
+      {method==='cash'&&<div className="qk">{quick.map(x=><button key={x} onClick={()=>setTender(String(x))}>{x===due?'ঠিকঠাক':x}</button>)}</div>}
+      {method==='cash'&&given>=due&&due>0&&<div className="chg">ফেরত: {tk(change)}</div>}</>}
+     {msg?.err&&<div className="msg err">{msg.t}</div>}</div></div>
+   <div className="df"><button onClick={()=>setPayOpen(false)}>বন্ধ</button><button className="b-pay" disabled={busy||!lines.length} onClick={pay}>{busy?'...':`নিশ্চিত করুন — ${tk(due)}`}</button></div></div></div>}
+  {discOpen&&<div className="mdl" onClick={()=>setDiscOpen(false)}><div className="dlg" style={{maxWidth:340}} onClick={e=>e.stopPropagation()}><div className="dh"><b>ডিসকাউন্ট (৳)</b><button onClick={()=>setDiscOpen(false)}><X size={16}/></button></div>
+   <div className="pb" style={{display:'block'}}><input className="amt" type="number" min="0" autoFocus value={disc||''} onChange={e=>setDisc(+e.target.value||0)}/><p style={{opacity:.7,fontSize:12}}>ক্যাশিয়ার সর্বোচ্চ ১০% দিতে পারে।</p></div><div className="df"><button className="b-pay" onClick={()=>setDiscOpen(false)}>ঠিক আছে</button></div></div></div>}
+  {showHeld&&<div className="mdl" onClick={()=>setShowHeld(false)}><div className="dlg" style={{maxWidth:340}} onClick={e=>e.stopPropagation()}><div className="dh"><b>হোল্ড করা বিল</b><button onClick={()=>setShowHeld(false)}><X size={16}/></button></div><div className="pb" style={{display:'grid',gap:6}}>{!held.length&&<p>কোনো হোল্ড বিল নেই</p>}{held.map((h,i)=><button key={i} onClick={()=>recall(i)}>{new Date(h.t).toLocaleTimeString()} — {Object.keys(h.cart).length} আইটেম</button>)}</div></div></div>}
+ </div>}

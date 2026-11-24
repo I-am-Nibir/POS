@@ -1,20 +1,23 @@
-import {useState,useEffect} from 'react';import {Customers,Stock,Finance} from './Extra.jsx';import SellPOS from './Sell.jsx';import {ProductsPro,Promos,Labels,Reports,Users,CameraScan} from './Extra2.jsx';
+import {useState,useEffect} from 'react';import {ShoppingCart,Package,Users as UsersIcon,Boxes,Wallet,Tag,Printer,BarChart3,ShieldCheck,LogOut,LayoutDashboard,Moon,Sun} from 'lucide-react';import {Customers,Stock,Finance} from './Extra.jsx';import SellPOS from './Sell.jsx';import Dash from './Dash.jsx';import {ProductsPro,Promos,Labels,Reports,Users,CameraScan} from './Extra2.jsx';
 const S={font:'system-ui,sans-serif'},card={border:'1px solid #ddd',borderRadius:8,padding:12},btn={padding:'8px 14px',borderRadius:6,border:'1px solid #333',background:'#111',color:'#fff',cursor:'pointer'};
 const tok=()=>sessionStorage.getItem('t');
 export async function api(p,o={}){const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok()},body:o.body&&JSON.stringify(o.body)});
  const j=await r.json();if(!r.ok){if(r.status===401&&tok()){sessionStorage.clear();location.reload()}throw new Error(j.error)}return j}
 export default function App(){
- const [user,setUser]=useState(()=>JSON.parse(sessionStorage.getItem('u')||'null'));const [tab,setTab]=useState('pos');
- if(!user)return <Login onLogin={u=>setUser(u)}/>;
+ const [user,setUser]=useState(()=>JSON.parse(sessionStorage.getItem('u')||'null'));const [tab,setTab]=useState(()=>{const u=JSON.parse(sessionStorage.getItem('u')||'null');return u&&u.role!=='cashier'?'dash':'pos'});const [dark,setDark]=useState(()=>localStorage.getItem('dashTheme')==='dark');
+ if(!user)return <Login onLogin={u=>{setUser(u);setTab(u.role!=='cashier'?'dash':'pos')}}/>;
  const mgr=user.role!=='cashier';
- return <div style={{...S,maxWidth:tab==='pos'?'none':1100,margin:'0 auto',padding:tab==='pos'?8:16}}>
-  <header style={{display:'flex',gap:8,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
-   <b style={{flex:1}}>POS — {user.username} ({user.role})</b>
-   <button style={btn} onClick={()=>setTab('pos')}>বিক্রি</button>
-   {mgr&&<button style={btn} onClick={()=>setTab('products')}>পণ্য</button>}
-   <button style={btn} onClick={()=>setTab('cust')}>কাস্টমার</button>{mgr&&<button style={btn} onClick={()=>setTab('stock')}>স্টক/সাপ্লায়ার</button>}{mgr&&<button style={btn} onClick={()=>setTab('fin')}>হিসাব</button>}{mgr&&<button style={btn} onClick={()=>setTab('promo')}>কুপন/গিফট</button>}{mgr&&<button style={btn} onClick={()=>setTab('labels')}>লেবেল</button>}{mgr&&<button style={btn} onClick={()=>setTab('rep2')}>রিপোর্ট ও এক্সপোর্ট</button>}{user.role==='admin'&&<button style={btn} onClick={()=>setTab('users')}>ইউজার</button>}
-   <button style={btn} onClick={()=>{sessionStorage.clear();setUser(null)}}>লগআউট</button></header>
-  {tab==='pos'&&<SellPOS/>}{tab==='products'&&<ProductsPro/>}{tab==='promo'&&<Promos/>}{tab==='labels'&&<Labels/>}{tab==='rep2'&&<Reports/>}{tab==='users'&&<Users/>}{tab==='report'&&<Report/>}{tab==='cust'&&<Customers/>}{tab==='stock'&&<Stock/>}{tab==='fin'&&<Finance/>}</div>}
+ const NAV=[['dash','ড্যাশবোর্ড',LayoutDashboard,mgr],['pos','বিক্রি',ShoppingCart,1],['products','পণ্য',Package,mgr],['cust','কাস্টমার',UsersIcon,1],['stock','স্টক/সাপ্লায়ার',Boxes,mgr],['fin','হিসাব',Wallet,mgr],['promo','কুপন/গিফট',Tag,mgr],['labels','লেবেল',Printer,mgr],['rep2','রিপোর্ট',BarChart3,mgr],['users','ইউজার',ShieldCheck,user.role==='admin']];
+ const label=(NAV.find(n=>n[0]===tab)||[])[1];
+ return <div className={'shell'+(tab==='pos'?' posmode':'')}>
+  <aside className="aside"><div className="brand">{tab==='pos'?'D':'Dokan POS'}</div>
+   {NAV.filter(n=>n[3]).map(([k,l,I])=><button key={k} className={tab===k?'on':''} title={l} onClick={()=>setTab(k)}><I size={18}/><span>{l}</span></button>)}
+   <div style={{flex:1}}/><div className="who"><span>{user.username} · {user.role}</span></div>
+   <button title="থিম" onClick={()=>{localStorage.setItem('dashTheme',dark?'light':'dark');setDark(!dark)}}>{dark?<Sun size={18}/>:<Moon size={18}/>}<span>{dark?'লাইট থিম':'ডার্ক থিম'}</span></button>
+   <button title="লগআউট" onClick={()=>{sessionStorage.clear();setUser(null)}}><LogOut size={18}/><span>লগআউট</span></button></aside>
+  <main className={'main'+(dark?' dark':'')}>{tab==='pos'?<SellPOS/>:<><h2 className="ptitle">{label}</h2><div className="page">
+   {tab==='dash'&&<Dash/>}{tab==='products'&&<ProductsPro/>}{tab==='promo'&&<Promos/>}{tab==='labels'&&<Labels/>}{tab==='rep2'&&<Reports/>}{tab==='users'&&<Users/>}{tab==='cust'&&<Customers/>}{tab==='stock'&&<Stock/>}{tab==='fin'&&<Finance/>}</div></>}</main></div>}
+
 function Login({onLogin}){const [u,setU]=useState('');const [p,setP]=useState('');const [e,setE]=useState('');
  const go=async ev=>{ev.preventDefault();try{const r=await api('/login',{method:'POST',body:{username:u,password:p}});
   sessionStorage.setItem('t',r.token);sessionStorage.setItem('u',JSON.stringify(r.user));onLogin(r.user)}catch(x){setE(x.message)}};
