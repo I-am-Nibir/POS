@@ -1,10 +1,12 @@
 # POS (Node.js + SQLite + React)
-Backend:  cd backend && npm install && JWT_SECRET=$(openssl rand -hex 32) npm start   (prothom admin password console-e dekhabe)
+Backend:  cd backend && npm install && JWT_SECRET=$(openssl rand -hex 32) npm start
+First run: open the site -> 'First-time setup' screen -> create your own admin account (no default password exists).
+Optional: set SETUP_KEY so only you can complete the first-time setup on a public URL.
 Frontend: cd frontend && npm install && npm run dev  -> http://localhost:5173
 Production: frontend-e `npm run build` korle backend nijei dist serve korbe.
 
 ## Env
-JWT_SECRET (dorkari) | PORT | DB_FILE | TZ_OFFSET ('+6 hours') | HTTPS=1 (HTTPS-er pichone chalale)
+JWT_SECRET (required) | SETUP_KEY (optional) | PORT | DB_FILE | TZ_OFFSET ('+6 hours') | HTTPS=1 (HTTPS-er pichone chalale)
 SHOP_NAME, SHOP_ADDR, SHOP_PHONE  -> receipt header
 PRINTER_HOST, PRINTER_PORT(9100), PRINTER_COLS (80mm=42/48, 58mm=32) -> LAN thermal printer (server theke)
 

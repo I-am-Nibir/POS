@@ -48,3 +48,8 @@ header{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 
 .g2{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.li{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd)}
 .bar{height:6px;background:var(--bd);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:#14b8a6}
 @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111827;position:relative;padding:16px}
+.authc{width:100%;max-width:360px;display:grid;gap:10px;background:#1f2937;padding:28px;border-radius:12px;color:#e5e7eb;box-shadow:0 10px 40px #0006}
+.authc input{background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:6px;min-height:42px;padding:6px 10px}.authc button{min-height:42px;background:#14b8a6!important;border-color:#14b8a6!important;color:#fff!important;border-radius:6px;font-weight:700;cursor:pointer}
+.lsw{display:flex;gap:4px;padding:4px 10px}.lsw button{background:#1f2937;border:1px solid #374151;color:#d1d5db;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;justify-content:center}.lsw button.on{background:#14b8a6;border-color:#14b8a6;color:#fff}
+.posmode .lsw{flex-direction:column;padding:4px 0}.posmode .lsw button{padding:3px 4px;font-size:10px}
