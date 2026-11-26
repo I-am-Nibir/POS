@@ -38,3 +38,9 @@ The existing Render blueprint is preserved. It configures a Starter service and 
 - The original sale timestamp is printed; refunded/other non-completed statuses are labelled on the receipt.
 - The print window is opened directly from the click event before the API request to reduce browser popup-blocking issues. Allow pop-ups for the POS site if prompted.
 - Reprint availability follows the current demo-data visibility setting.
+
+### Invoice barcode sizing adjustment
+- Reduced the printed invoice CODE128 barcode bar module width and height.
+- Removed the duplicate human-readable value under the barcode because the invoice number is already printed above it.
+- Constrained the barcode SVG to the receipt content width (54mm on 58mm paper / 76mm on 80mm paper), so it cannot extend wider than the receipt's product-list column.
+- Note: very long invoice identifiers can still produce dense barcodes; test with the actual scanner and printer before production use.
