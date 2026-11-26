@@ -2,7 +2,7 @@ import {__} from './i18n.js';
 import { rl, srv, lang, setLang } from './i18n.js';
 import { useState, useEffect } from 'react';
 import JsBarcode from 'jsbarcode';
-import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun } from 'lucide-react';
+import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun, ArrowLeftRight, Trophy } from 'lucide-react';
 import { Customers, Stock, Finance } from './Extra.jsx';
 import SellPOS from './Sell.jsx';
 import Dash from './Dash.jsx';
@@ -68,11 +68,11 @@ export default function App() {
     setTab(u.role !== 'cashier' ? 'dash' : 'pos');
   }} />;
   const mgr = user.role !== 'cashier';
-  const NAV = [['dash', __("ড্যাশবোর্ড"), LayoutDashboard, mgr], ['pos', __("বিক্রি"), ShoppingCart, 1], ['products', __("পণ্য"), Package, mgr], ['cust', __("কাস্টমার"), UsersIcon, 1], ['stock', __("স্টক/সাপ্লায়ার"), Boxes, mgr], ['fin', __("হিসাব"), Wallet, mgr], ['exchange', 'Exchange', Wallet, mgr], ['promo', __("কুপন/গিফট"), Tag, mgr], ['labels', __("লেবেল"), Printer, mgr], ['rep2', __("রিপোর্ট"), BarChart3, mgr], ['users', __("ইউজার"), ShieldCheck, user.role === 'admin'], ['receipt', 'Receipt Settings', Printer, user.role === 'admin'], ['loyalty', 'Loyalty / Reward Points', ShieldCheck, user.role === 'admin']];
+  const NAV = [['dash', __("ড্যাশবোর্ড"), LayoutDashboard, mgr], ['pos', __("বিক্রি"), ShoppingCart, 1], ['products', __("পণ্য"), Package, mgr], ['cust', __("কাস্টমার"), UsersIcon, 1], ['stock', __("স্টক/সাপ্লায়ার"), Boxes, mgr], ['fin', __("হিসাব"), Wallet, mgr], ['exchange', 'Exchange', ArrowLeftRight, mgr], ['promo', __("কুপন/গিফট"), Tag, mgr], ['labels', __("লেবেল"), Printer, mgr], ['rep2', __("রিপোর্ট"), BarChart3, mgr], ['users', __("ইউজার"), ShieldCheck, user.role === 'admin'], ['receipt', 'Receipt Settings', Printer, user.role === 'admin'], ['loyalty', 'Loyalty / Reward Points', Trophy, user.role === 'admin']];
   const label = (NAV.find(n => n[0] === tab) || [])[1];
   return <div className={'shell' + (tab === 'pos' ? ' posmode' : '')}>
   <aside className="aside"><div className="brand">{tab === 'pos' ? 'D' : 'Dokan POS'}</div>
-   {NAV.filter(n => n[3]).map(([k, l, I]) => <button key={k} className={tab === k ? 'on' : ''} title={l} onClick={() => setTab(k)}><I size={18} /><span>{l}</span></button>)}
+   {NAV.filter(n => n[3]).map(([k, l, I]) => <button key={k} className={(tab === k ? 'on ' : '') + (k === 'exchange' ? 'nav-exchange' : k === 'loyalty' ? 'nav-loyalty' : '')} title={l} onClick={() => setTab(k)}><span className="nav-icon"><I size={18} strokeWidth={2.25} /></span><span>{l}</span></button>)}
    <div style={{
         flex: 1
       }} /><div className="who"><span>{user.username} · {rl(user.role)}</span></div>
