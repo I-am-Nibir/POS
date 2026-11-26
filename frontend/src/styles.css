@@ -51,14 +51,16 @@ header{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 
 :root{--g100:oklch(96.7% .003 264.542);--g200:oklch(92.8% .006 264.531);--g300:oklch(87.2% .01 258.338);--g400:oklch(70.7% .022 261.325);--g500:oklch(55.1% .027 264.364);--g600:oklch(44.6% .03 256.802);--g700:oklch(37.3% .034 259.733);--g800:oklch(27.8% .033 256.848);--g900:oklch(21% .034 264.665);--teal5:oklch(70.4% .14 182.503);--teal6:oklch(60% .118 184.704);--grn4:oklch(79.2% .209 151.711);--grn5:oklch(72.3% .219 149.579);--grn6:oklch(62.7% .194 149.214);--blu4:oklch(70.7% .165 254.624);--blu5:oklch(62.3% .214 259.815);--blu6:oklch(54.6% .245 262.881);--red4:oklch(70.4% .191 22.216);--red6:oklch(57.7% .245 27.325);--org4:oklch(75% .183 55.934)}
 .nx{--sf:var(--g900);--bx:var(--g700);--in:var(--g800);--tb2:var(--g700);--hv:var(--g600);--ed:var(--g800);--fc:var(--g200);--fs:var(--g300);--pr:var(--teal5);--ok:var(--grn6);--er:var(--red4);--inf:var(--blu6)}
 .nx.light{--sf:var(--g300);--bx:#fff;--in:var(--g200);--tb2:rgb(244 244 245);--hv:rgb(228 228 231);--ed:var(--g300);--fc:var(--g700);--fs:var(--g500);--ok:var(--grn4);--inf:var(--blu4)}
-/* cart bottom buttons — same as NexoPOS: h-16, 4 equal buttons, font-bold, text-lg / lg:text-2xl */
+/* cart bottom buttons â€” same as NexoPOS: h-16, 4 equal buttons, font-bold, text-lg / lg:text-2xl */
 .bottom{display:flex;height:64px;flex-shrink:0;border-top:1px solid var(--ed)}
 .bottom button{flex:1 1 25%;width:25%;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:18px;line-height:1.5;border:0;border-right:1px solid var(--ed);border-radius:0;background:transparent;color:var(--fc);cursor:pointer}
 @media(min-width:1024px){.bottom button{font-size:24px}.bottom button svg{width:20px;height:20px}}
 .bottom button:disabled{opacity:.45;cursor:not-allowed}
 .bottom .b-pay{background:var(--grn5);color:#fff;border-right:1px solid var(--grn6)}.bottom .b-pay:hover:not(:disabled){background:var(--grn6)}
 .bottom .b-hold{background:var(--blu5);color:#fff;border-right:1px solid var(--blu6)}.bottom .b-hold:hover:not(:disabled){background:var(--blu6)}
-.bottom .b-disc:hover:not(:disabled){background:var(--hv)}.bottom .b-void{border-right:0}.bottom .b-void:hover:not(:disabled){background:var(--red6);color:#fff}
+.bottom .b-disc:hover:not(:disabled){background:var(--hv)}
+.bottom .b-void{border-right:0;background:var(--red6);color:#fff}
+.bottom .b-void:hover:not(:disabled){filter:brightness(1.15)}
 /* ns-button: py-2 px-3 font-semibold rounded shadow, bg input-button */
 .toolbox button,.df button,.pm button,.pf button,.qk button,.tb{padding:8px 12px;font-weight:600;border-radius:4px;background:var(--tb2);color:var(--fc);border:0;box-shadow:0 1px 3px #0003;min-height:40px}
 .toolbox button{border-radius:0;box-shadow:none;border-right:1px solid var(--ed)}
@@ -78,3 +80,12 @@ header{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 
 .page button[style]{background:var(--teal5)!important;border:0!important;color:#fff!important}.page button[style]:hover:not(:disabled){filter:brightness(.93)}
 .page button:not([style]){background:var(--ib);color:var(--tx);border:0}.page button:not([style]):hover:not(:disabled){background:var(--ibh)}
 .nx{display:flex;gap:8px;height:100vh;padding:8px;background:var(--sf);color:var(--fc)}
+/* --- Sell window improvements --- */
+.qin{width:46px;min-height:30px;padding:2px;text-align:center;border-radius:4px;border:1px solid var(--ed);background:var(--in);color:var(--fc);font:inherit}
+.qty input[type=number]::-webkit-outer-spin-button,.qty input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.qty input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.discopt{display:flex;gap:6px;margin-bottom:10px}
+.discopt button{flex:1;min-height:40px;border-radius:6px;border:1px solid var(--ed);background:var(--tb2);color:var(--fc);font-weight:600;padding:0 12px;cursor:pointer}
+.discopt button.on{background:var(--pr);color:#fff!important;border-color:var(--pr)}
+.lv{opacity:.6;font-size:11px}
+.csrch{min-width:120px;flex:1;min-height:40px;border:0;border-right:1px solid var(--ed);padding:0 10px;background:var(--tb2);color:var(--fc);border-radius:0}
