@@ -1,6 +1,6 @@
 import {__} from './i18n.js';
 import { useState, useEffect, useRef } from 'react';
-import { Search, Moon, Sun, X } from 'lucide-react';
+import { Search, Moon, Sun, X, Banknote, Pause, Percent, Trash2, Folder } from 'lucide-react';
 import { api, receipt } from './App.jsx';
 import { CameraScan } from './Extra2.jsx';
 import { isNet, qget, qadd, syncQueue, cacheGet, cacheSet } from './offline.js';
@@ -47,7 +47,8 @@ export default function Sell() {
   const [held, setHeld] = useState(() => JSON.parse(localStorage.getItem('held') || '[]')),
     [showHeld, setShowHeld] = useState(false),
     [light, setLight] = useState(() => localStorage.getItem('posTheme') === 'light');
-  const [payOpen, setPayOpen] = useState(false),
+  const [sel, setSel] = useState(-1),
+    [payOpen, setPayOpen] = useState(false),
     [discOpen, setDiscOpen] = useState(false);
   const sr = useRef(),
     H = useRef(),
@@ -171,7 +172,7 @@ export default function Sell() {
       err: 1
     }));
   };
-  const list = items.filter(i => (!cat || i.category === cat) && (!q || (i.name + i.sku + (i.barcode || '') + (i.size || '') + (i.color || '')).toLowerCase().includes(q.toLowerCase()))).slice(0, 150);
+  const list = items.filter(i => (!cat || i.category === cat) && (!q || (i.name + i.sku + (i.barcode || '') + (i.size || '') + (i.color || '')).toLowerCase().includes(q.toLowerCase()))).sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.name.localeCompare(b.name) || (a.size || '').localeCompare(b.size || '')).slice(0, 300);
   const cats = [...new Set(items.map(i => i.category).filter(Boolean))];
   const clear = () => {
     setPayOpen(false);
@@ -308,6 +309,12 @@ export default function Sell() {
     }
     setBusy(false);
   };
+  useEffect(() => {
+    document.querySelector('.prow.sel')?.scrollIntoView({
+      block: 'nearest'
+    });
+  }, [sel]);
+  useEffect(() => setSel(-1), [q, cat]);
   H.current = {
     pay,
     hold,
@@ -427,29 +434,44 @@ export default function Sell() {
      <tr><td>{__("গিফট কার্ড: ")}<b>{gApplied || '—'}</b></td><td>{__("ভ্যাট")}</td><td className="r">{tk(vat)}</td></tr>
      <tr className="gt"><td /><td>{__("মোট")}</td><td className="r">{tk(total)}</td></tr></tbody></table>
    </div>
-   <div className="bottom"><button className="b-pay" disabled={!lines.length} onClick={() => setPayOpen(true)}>{__("💳 পেমেন্ট ")}<small>F9</small></button><button className="b-hold" disabled={!lines.length} onClick={hold}>{__("⏸ হোল্ড ")}<small>F4</small></button><button className="b-disc" disabled={!lines.length} onClick={() => setDiscOpen(true)}>{__("％ ডিসকাউন্ট")}</button><button className="b-void" disabled={!lines.length} onClick={clear}>{__("✕ বাতিল")}</button></div>
+   <div className="bottom"><button className="b-pay" title="F9" disabled={!lines.length} onClick={() => setPayOpen(true)}><Banknote size={20} /><span>{__("পেমেন্ট করুন")}</span></button><button className="b-hold" title="F4" disabled={!lines.length} onClick={hold}><Pause size={20} /><span>{__("হোল্ড")}</span></button><button className="b-disc" disabled={!lines.length} onClick={() => setDiscOpen(true)}><Percent size={20} /><span>{__("ডিসকাউন্ট")}</span></button><button className="b-void" disabled={!lines.length} onClick={clear}><Trash2 size={20} /><span>{__("বিল বাতিল")}</span></button></div>
   </section>
   <section className="gridp"><div className="gtool"><span className="ic"><Search size={16} /></span><span className="ic">▮▯▮</span>
     <input ref={sr} className="scan" placeholder={__("বার্কোড স্ক্যান করুন বা নাম/SKU লিখে Enter (F2)")} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => {
-          if (e.key === 'Enter' && q) {
-            const m = find(q) || list.length === 1 && list[0];
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSel(x => Math.min(x + 1, list.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSel(x => Math.max(x - 1, 0));
+          } else if (e.key === 'Enter' && q) {
+            const m = find(q) || sel >= 0 && list[sel] || list.length === 1 && list[0];
             m ? (add(m), setQ('')) : (beep(0), setMsg({
               t: __("পণ্য পাওয়া যায়নি"),
               err: 1
             }));
+          } else if (e.key === 'Enter' && sel >= 0 && list[sel]) {
+            add(list[sel]);
+          } else if (e.key === 'Escape') {
+            setQ('');
+            setSel(-1);
           }
-          if (e.key === 'Escape') setQ('');
         }} />
     <CameraScan onCode={scan} /><button className="ic" title={__("থিম")} onClick={() => {
           localStorage.setItem('posTheme', light ? 'dark' : 'light');
           setLight(!light);
         }}>{light ? <Moon size={16} /> : <Sun size={16} />}</button></div>
    <div className="crumb"><a onClick={() => setCat('')}>{__("হোম")}</a>{cat && <> › <b>{cat}</b></>}</div>
-   <div className="tiles">{!cat && cats.map(c => <button key={c} className="tile catg" onClick={() => setCat(c)}>📁<b>{c}</b></button>)}
-    {list.map(p => <button key={p.id} className="tile" disabled={p.stock <= 0} onClick={() => {
-          add(p);
-          focus();
-        }}><b>{p.name}</b><span>{p.size} {p.color}</span><em>{tk(p.price)}</em><small className={p.stock <= p.low_stock ? 'low' : ''}>{__("স্টক ")}{p.stock}</small>{cart[p.id] > 0 && <i>{cart[p.id]}</i>}</button>)}</div></section>
+   <div className="plist"><div className="phead"><div>{__("পণ্যের নাম")}</div><div>{__("SKU/বার্কোড")}</div><div>{__("স্টক")}</div><div>{__("দাম")}</div></div>
+    <div className="pbody">{!cat && !q && cats.map(c => <div key={c} className="prow cat" onClick={() => setCat(c)}><div className="pn"><Folder size={16} /><b>{c}</b></div><div /><div /><div /></div>)}
+     {list.map((p, i) => <div key={p.id} className={'prow' + (p.stock <= 0 ? ' off' : '') + (i === sel ? ' sel' : '')} onClick={() => {
+            add(p);
+            focus();
+          }}>
+      <div className="pn"><b>{p.name}</b>{(p.size || p.color) && <span className="var">{p.size} {p.color}</span>}{cart[p.id] > 0 && <i className="qb">{cart[p.id]}</i>}</div>
+      <div className="ps">{p.barcode || p.sku}</div><div className={'pk' + (p.stock <= p.low_stock ? ' low' : '')}>{p.stock}</div><div className="pp">{tk(p.price)}</div></div>)}
+     {!list.length && <p className="empty">{__("কোনো পণ্য নেই")}</p>}</div></div>
+   </section>
   {payOpen && <div className="mdl" onClick={() => setPayOpen(false)}><div className="dlg pay" onClick={e => e.stopPropagation()}>
    <div className="dh"><b>{__("পেমেন্ট")}</b><button onClick={() => setPayOpen(false)}><X size={16} /></button></div>
    <div className="pb"><div className="pm">{Object.entries(M).map(([k, v]) => <button key={k} className={method === k ? 'on' : ''} onClick={() => {
