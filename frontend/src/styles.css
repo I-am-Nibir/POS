@@ -81,3 +81,14 @@ header{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 
 
 /* POS update controls */
 .demo-card{margin-top:18px}.demo-actions{display:flex;gap:8px;flex-wrap:wrap}.demo-actions button{padding:8px 12px;border:1px solid var(--bd,#d1d5db);border-radius:6px;background:var(--cd,#fff);cursor:pointer}.demo-actions .demo-delete{color:#dc2626}.demo-counts{font-size:12px}.held-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;text-align:left}.held-item span{font-size:12px;opacity:.75}.msg button{margin-left:8px;padding:5px 10px;border:0;border-radius:4px;background:#fff;color:#14532d;font-weight:700}
+/* Grouped sidebar navigation */
+.aside .nav-group{display:flex;flex-direction:column;gap:2px}
+.aside .nav-parent{width:100%}
+.aside .nav-chevron{margin-left:auto;transition:transform .18s ease;opacity:.75}
+.aside .nav-chevron.open{transform:rotate(180deg)}
+.aside .nav-children{display:flex;flex-direction:column;gap:2px;margin:0 0 5px 13px;padding-left:9px;border-left:1px solid #475569}
+.aside button.nav-subitem{padding:7px 9px;font-size:13px}
+.aside button.nav-subitem .nav-icon{width:27px;height:27px;flex-basis:27px;border-radius:8px;background:#273449;color:#cbd5e1;box-shadow:none}
+/* Keep every sidebar icon in the same neutral palette */
+.aside button .nav-icon{background:#273449!important;color:#cbd5e1!important;box-shadow:none!important}
+.aside button.on .nav-icon{background:#475569!important;color:#fff!important}

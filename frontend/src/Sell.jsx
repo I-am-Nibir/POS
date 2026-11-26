@@ -137,7 +137,7 @@ export default function Sell() {
     giftUse = Math.min(gift, total),
     creditUse = Math.min(creditBalance || voucherBalance, total - giftUse),
     due = r2(total - giftUse - creditUse);
-  const given = tender === '' ? due : +tender,
+  const given = tender === '' ? 0 : Number(tender),
     change = Math.max(0, r2(given - due)),
     short = method !== 'due' && method === 'cash' && given < due;
   useEffect(() => {
@@ -274,10 +274,12 @@ export default function Sell() {
   };
   const pay = async () => {
     if (busy || !lines.length) return;
+    if (method === 'due' && !['admin','manager'].includes(user.role)) return setMsg({t: __('বাকি বিক্রির অনুমতি নেই'), err: 1});
     if (method === 'due' && !cust) return setMsg({
       t: __("বাকির জন্য কাস্টমার বাছুন"),
       err: 1
     });
+    if (method === 'due' && !navigator.onLine) return setMsg({t: __('বাকি বিক্রির জন্য ইন্টারনেট সংযোগ প্রয়োজন'), err: 1});
     const dFinal = Math.max(0, Math.min(+disc || 0, manualCap));
     if ((creditApplied || voucherApplied) && (dFinal > 0 || cd > 0 || gApplied || redeemPoints > 0)) return setMsg({t: __('Store credit or voucher cannot be combined with discounts, coupons or gift cards'), err: 1});
     if (redeemPoints > 0 && !cust) return setMsg({t: __('Select a registered customer to redeem loyalty points'), err: 1});
@@ -285,10 +287,17 @@ export default function Sell() {
     if (redeemPoints > currentPoints || redeemPoints > Number(loyaltyCfg.maxRedeemPoints || 0) || (redeemPoints > 0 && redeemPoints < Number(loyaltyCfg.minRedeemPoints || 0))) return setMsg({t: __('Invalid loyalty points amount'), err: 1});
     if (creditApplied && voucherApplied) return setMsg({t: __('Use either store credit or one voucher per sale'), err: 1});
     if (short) return setMsg({
-      t: __("ক্রেতার দেওয়া টাকা কম"),
+      t: tender === '' ? __('ক্রেতার দেওয়া টাকার পরিমাণ লিখুন') : __('ক্রেতার দেওয়া টাকা কম'),
       err: 1
     });
-    const paid = method === 'due' ? tender === '' ? 0 : +tender : method === 'cash' ? given : due;
+    const paid = method === 'due' ? (tender === '' ? 0 : Number(tender)) : method === 'cash' ? given : due;
+    if (method === 'due' && (!Number.isFinite(paid) || paid < 0 || paid > due)) return setMsg({t: __('জমা টাকার পরিমাণ মোট বাকি টাকার বেশি হতে পারবে না'), err: 1});
+    if (method === 'due') {
+      const first = window.confirm(__('এই বিক্রিটি বাকিতে রাখবেন? কাস্টমারের হিসাবে বাকি যোগ হবে।'));
+      if (!first) return;
+      const second = window.confirm(__('দ্বিতীয়বার নিশ্চিত করুন: আপনি কি সত্যিই এই বিক্রিটি বাকিতে রাখতে চান?'));
+      if (!second) return;
+    }
     const body = {
       items: lines.map(l => ({
         id: l.p.id,
@@ -561,7 +570,7 @@ export default function Sell() {
    </section>
   {payOpen && <div className="mdl" onClick={() => setPayOpen(false)}><div className="dlg pay" onClick={e => e.stopPropagation()}>
    <div className="dh"><b>{__("পেমেন্ট")}</b><button onClick={() => setPayOpen(false)}><X size={16} /></button></div>
-   <div className="pb"><div className="pm">{Object.entries(M).map(([k, v]) => <button key={k} className={method === k ? 'on' : ''} onClick={() => {
+   <div className="pb"><div className="pm">{Object.entries(M).filter(([k]) => k !== 'due' || ['admin','manager'].includes(user.role)).map(([k, v]) => <button key={k} className={method === k ? 'on' : ''} onClick={() => {
               setMethod(k);
               setTender('');
             }}>{v}</button>)}</div>
@@ -569,7 +578,8 @@ export default function Sell() {
      <div className="pf"><input placeholder={__("কুপন কোড")} value={code} onChange={e => setCode(e.target.value)} /><button onClick={applyCode}>{__("প্রয়োগ")}</button><input placeholder={__("গিফট কার্ড")} value={gcode} onChange={e => setGcode(e.target.value)} /><button onClick={applyGift}>{__("প্রয়োগ")}</button><input placeholder="Store Credit Code" value={creditCode} onChange={e=>setCreditCode(e.target.value)} /><button onClick={applyStoreCredit}>Apply Credit</button><input placeholder="Exchange Voucher Code" value={voucherCode} onChange={e=>setVoucherCode(e.target.value)} /><button onClick={applyVoucher}>Apply Voucher</button></div>
      {(method === 'cash' || method === 'due') && <><input className="amt" type="number" autoFocus placeholder={method === 'due' ? __("এখন কত দিল (ঐচ্ছিক)") : __("ক্রেতার দেওয়া টাকা")} value={tender} onChange={e => setTender(e.target.value)} />
       {method === 'cash' && <div className="qk">{quick.map(x => <button key={x} onClick={() => setTender(String(x))}>{x === due ? __("ঠিক টাকা") : x}</button>)}</div>}
-      {method === 'cash' && given >= due && due > 0 && <div className="chg">{__("ফেরত টাকা: ")}{tk(change)}</div>}</>}
+      {method === 'cash' && tender !== '' && given >= due && due > 0 && <div className="chg">{__("ফেরত টাকা: ")}{tk(change)}</div>}
+      {method === 'due' && <div className="chg">{__('এখন জমা: ')}{tk(tender === '' ? 0 : Number(tender))} · {__('বাকি থাকবে: ')}{tk(Math.max(0, due - (tender === '' ? 0 : Number(tender))))}</div>}</>}
      {msg?.err && <div className="msg err">{msg.t}</div>}</div></div>
    <div className="df"><button onClick={() => setPayOpen(false)}>{__("বন্ধ")}</button><button className="b-pay" disabled={busy || !lines.length} onClick={pay}>{busy ? '...' : __("নিশ্চিত করুন — {0}", [tk(due)])}</button></div></div></div>}
   {discOpen && <div className="mdl" onClick={() => setDiscOpen(false)}><div className="dlg" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>

@@ -2,7 +2,7 @@ import {__} from './i18n.js';
 import { rl, srv, lang, setLang } from './i18n.js';
 import { useState, useEffect } from 'react';
 import JsBarcode from 'jsbarcode';
-import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun, ArrowLeftRight, Trophy } from 'lucide-react';
+import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun, ArrowLeftRight, Trophy, ChevronDown, UserRound, CreditCard } from 'lucide-react';
 import { Customers, Stock, Finance } from './Extra.jsx';
 import SellPOS from './Sell.jsx';
 import Dash from './Dash.jsx';
@@ -63,16 +63,31 @@ export default function App() {
     return u && u.role !== 'cashier' ? 'dash' : 'pos';
   });
   const [dark, setDark] = useState(() => localStorage.getItem('dashTheme') === 'dark');
+  const [expanded, setExpanded] = useState(() => ({ finance: ['accounts','exchange'].includes(tab), customers: ['cust','loyalty'].includes(tab) }));
   if (!user) return <Auth onLogin={u => {
     setUser(u);
     setTab(u.role !== 'cashier' ? 'dash' : 'pos');
   }} />;
   const mgr = user.role !== 'cashier';
-  const NAV = [['dash', __("ড্যাশবোর্ড"), LayoutDashboard, mgr], ['pos', __("বিক্রি"), ShoppingCart, 1], ['products', __("পণ্য"), Package, mgr], ['cust', __("কাস্টমার"), UsersIcon, 1], ['stock', __("স্টক/সাপ্লায়ার"), Boxes, mgr], ['fin', __("হিসাব"), Wallet, mgr], ['exchange', 'Exchange', ArrowLeftRight, mgr], ['promo', __("কুপন/গিফট"), Tag, mgr], ['labels', __("লেবেল"), Printer, mgr], ['rep2', __("রিপোর্ট"), BarChart3, mgr], ['users', __("ইউজার"), ShieldCheck, user.role === 'admin'], ['receipt', 'Receipt Settings', Printer, user.role === 'admin'], ['loyalty', 'Loyalty / Reward Points', Trophy, user.role === 'admin']];
-  const label = (NAV.find(n => n[0] === tab) || [])[1];
+  const NAV = [
+    { id:'dash', label:__("ড্যাশবোর্ড"), icon:LayoutDashboard, show:mgr },
+    { id:'pos', label:__("বিক্রি"), icon:ShoppingCart, show:true },
+    { id:'products', label:__("পণ্য"), icon:Package, show:mgr },
+    { id:'customers', label:__("কাস্টমার"), icon:UsersIcon, show:true, children:[{id:'cust',label:'List of Customers',icon:UserRound,show:true},{id:'loyalty',label:'Loyalty Program',icon:Trophy,show:user.role==='admin'}] },
+    { id:'stock', label:__("স্টক/সাপ্লায়ার"), icon:Boxes, show:mgr },
+    { id:'finance', label:'Finance', icon:Wallet, show:mgr, children:[{id:'accounts',label:'Accounts',icon:CreditCard,show:mgr},{id:'exchange',label:'Exchange',icon:ArrowLeftRight,show:mgr}] },
+    { id:'promo', label:__("কুপন/গিফট"), icon:Tag, show:mgr },
+    { id:'labels', label:__("লেবেল"), icon:Printer, show:mgr },
+    { id:'rep2', label:__("রিপোর্ট"), icon:BarChart3, show:mgr },
+    { id:'users', label:__("ইউজার"), icon:ShieldCheck, show:user.role==='admin' },
+    { id:'receipt', label:'Receipt Settings', icon:Printer, show:user.role==='admin' }
+  ];
+  const allNav = NAV.flatMap(n => [n,...(n.children||[])]);
+  const label = (allNav.find(n => n.id === tab) || {}).label;
+  const renderNavItem = (item, nested=false) => <button key={item.id} className={(tab===item.id?'on ':'')+(nested?'nav-subitem':'')} title={item.label} onClick={()=>setTab(item.id)}><span className="nav-icon"><item.icon size={18} strokeWidth={2.1}/></span><span>{item.label}</span></button>;
   return <div className={'shell' + (tab === 'pos' ? ' posmode' : '')}>
   <aside className="aside"><div className="brand">{tab === 'pos' ? 'D' : 'Dokan POS'}</div>
-   {NAV.filter(n => n[3]).map(([k, l, I]) => <button key={k} className={(tab === k ? 'on ' : '') + (k === 'exchange' ? 'nav-exchange' : k === 'loyalty' ? 'nav-loyalty' : '')} title={l} onClick={() => setTab(k)}><span className="nav-icon"><I size={18} strokeWidth={2.25} /></span><span>{l}</span></button>)}
+   {NAV.filter(n=>n.show).map(item=>item.children ? <div className="nav-group" key={item.id}><button className={'nav-parent '+(item.children.some(c=>c.id===tab)?'on':'')} title={item.label} onClick={()=>setExpanded(x=>({...x,[item.id]:!x[item.id]}))}><span className="nav-icon"><item.icon size={18} strokeWidth={2.1}/></span><span>{item.label}</span><ChevronDown className={'nav-chevron '+(expanded[item.id]?'open':'')} size={15}/></button>{expanded[item.id]&&<div className="nav-children">{item.children.filter(c=>c.show).map(c=>renderNavItem(c,true))}</div>}</div> : renderNavItem(item))}
    <div style={{
         flex: 1
       }} /><div className="who"><span>{user.username} · {rl(user.role)}</span></div>
@@ -85,7 +100,7 @@ export default function App() {
         setUser(null);
       }}><LogOut size={18} /><span>{__("লগআউট")}</span></button></aside>
   <main className={'main' + (dark ? ' dark' : '')}>{tab === 'pos' ? <SellPOS /> : <><h2 className="ptitle">{label}</h2><div className="page">
-   {tab === 'dash' && <Dash />}{tab === 'products' && <ProductsPro />}{tab === 'promo' && <Promos />}{tab === 'labels' && <Labels />}{tab === 'rep2' && <Reports />}{tab === 'users' && <Users />}{tab === 'receipt' && <ReceiptSettings />}{tab === 'loyalty' && <LoyaltySettings />}{tab === 'cust' && <Customers />}{tab === 'stock' && <Stock />}{tab === 'fin' && <Finance />}{tab === 'exchange' && <Exchange />}</div></>}</main></div>;
+   {tab === 'dash' && <Dash />}{tab === 'products' && <ProductsPro />}{tab === 'promo' && <Promos />}{tab === 'labels' && <Labels />}{tab === 'rep2' && <Reports />}{tab === 'users' && <Users />}{tab === 'receipt' && <ReceiptSettings />}{tab === 'loyalty' && <LoyaltySettings />}{tab === 'cust' && <Customers />}{tab === 'stock' && <Stock />}{tab === 'accounts' && <Finance />}{tab === 'exchange' && <Exchange />}</div></>}</main></div>;
 }
 function LangSwitch({
   style
