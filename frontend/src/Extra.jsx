@@ -97,7 +97,6 @@ export function Customers() {
       </React.Fragment>)}
     </tbody></table></div>
   </div>;
-}div>;
 }
 export function Stock() {
   const [sup, setSup] = useState([]);
