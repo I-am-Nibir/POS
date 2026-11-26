@@ -1,6 +1,6 @@
 import {__} from './i18n.js';
 import { ph, cat } from './i18n.js';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from './App.jsx';
 const box = {
     border: '1px solid #ddd',
@@ -42,42 +42,59 @@ function Form({
       }
     }}>{label}</button><span style={{
       color: 'red'
-    }}>{e}</span></div>;
-}
-export function Customers() {
+    }}>{e}</span></dexport function Customers() {
   const me=JSON.parse(sessionStorage.getItem('u')||'{}');
-  const [l, setL] = useState([]), [ledger,setLedger]=useState(null), [ledgerCustomer,setLedgerCustomer]=useState(null), [pointsLedger,setPointsLedger]=useState(null), [pointsCustomer,setPointsCustomer]=useState(null);
-  const load = () => api('/customers').then(setL);
-  useEffect(() => {
-    load();
-  }, []);
-  return <div><Form label={__("কাস্টমার যোগ")} fields={['name', 'phone']} onSubmit={async f => {
-      await api('/customers', {
-        method: 'POST',
-        body: {
-          name: f.name,
-          phone: f.phone || undefined
-        }
-      });
-      load();
-    }} />
-  <table width="100%"><thead><tr><th align="left">{__("নাম")}</th><th>{__("ফোন")}</th><th>{__("বাকি")}</th><th>{__("পয়েন্ট")}</th><th></th></tr></thead><tbody>
-  {l.map(c => <tr key={c.id}><td>{c.name}</td><td>{c.phone}</td><td>{c.due}</td><td>{c.points}</td><td>{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/credit-ledger`);setLedger(x);setLedgerCustomer(c)}catch(e){alert(e.message)}}}>Credit Ledger</button>}{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/points-ledger`);setPointsLedger(x);setPointsCustomer(c)}catch(e){alert(e.message)}}}>Points Ledger</button>}{c.due > 0 && <button onClick={async () => {
-              const a = +prompt(__("কত টাকা পেলেন?"));
-              if (a) {
-                try {
-                  await api(`/customers/${c.id}/pay`, {
-                    method: 'POST',
-                    body: {
-                      amount: a
-                    }
-                  });
-                  load();
-                } catch (e) {
-                  alert(e.message);
-                }
-              }
-            }}>{__("বাকি আদায়")}</button>}</td></tr>)}</tbody></table>{pointsLedger&&<div style={box}><div style={{display:'flex',justifyContent:'space-between'}}><b>Reward points ledger · {pointsCustomer?.name}</b><button onClick={()=>setPointsLedger(null)}>Close</button></div><p>Current balance: {pointsLedger.balance} points</p><table width="100%"><thead><tr><th>When</th><th>Type</th><th>Points</th><th>Balance after</th><th>Description</th></tr></thead><tbody>{pointsLedger.entries.map(x=><tr key={x.id}><td>{x.created_at}</td><td>{x.kind}</td><td>{['redeem','exchange_reverse'].includes(x.kind)?'-':''}{x.points}</td><td>{x.balance_after}</td><td>{x.description}</td></tr>)}</tbody></table></div>}</div>;
+  const [l,setL]=useState([]);
+  const [expandedCustomer,setExpandedCustomer]=useState(null);
+  const [ledgerTab,setLedgerTab]=useState('credit');
+  const [ledgerData,setLedgerData]=useState(null);
+  const [ledgerLoading,setLedgerLoading]=useState(false);
+  const [ledgerError,setLedgerError]=useState('');
+  const load=()=>api('/customers').then(setL);
+  useEffect(()=>{load()},[]);
+  const showLedger=async(customer,tab='credit')=>{
+    if(expandedCustomer?.id===customer.id && ledgerTab===tab){setExpandedCustomer(null);setLedgerData(null);return}
+    setExpandedCustomer(customer);setLedgerTab(tab);setLedgerData(null);setLedgerError('');setLedgerLoading(true);
+    try{const data=await api(`/customers/${customer.id}/${tab==='credit'?'credit':'points'}-ledger`);setLedgerData(data)}
+    catch(e){setLedgerError(e.message||'Could not load ledger')}
+    finally{setLedgerLoading(false)}
+  };
+  const money=n=>'৳'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+  const ledgerPanel=(customer)=><tr key={`ledger-${customer.id}`}><td colSpan="5" style={{padding:'10px 12px',background:'var(--panel, #f8fafc)'}}>
+    <div style={{border:'1px solid var(--border, #d1d5db)',borderRadius:9,padding:12}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <b>{customer.name} · Customer Ledger</b>
+        <button onClick={()=>{setExpandedCustomer(null);setLedgerData(null)}}>Collapse ×</button>
+      </div>
+      <div style={{display:'flex',gap:8,margin:'10px 0'}}>
+        <button style={{...b,opacity:ledgerTab==='credit'?1:.65}} onClick={()=>showLedger(customer,'credit')}>Credit Ledger</button>
+        <button style={{...b,opacity:ledgerTab==='points'?1:.65}} onClick={()=>showLedger(customer,'points')}>Points Ledger</button>
+      </div>
+      {ledgerLoading?<p>Loading ledger…</p>:ledgerError?<p style={{color:'#b91c1c'}}>{ledgerError}</p>:ledgerData&&<>
+        <p style={{margin:'6px 0 10px'}}><b>Current {ledgerTab==='credit'?'credit balance':'points balance'}:</b> {ledgerTab==='credit'?money(ledgerData.balance):`${ledgerData.balance||0} points`}</p>
+        <div style={{overflowX:'auto'}}>
+          {ledgerTab==='credit'?<table width="100%"><thead><tr><th align="left">Date</th><th align="left">Type</th><th align="left">Reference</th><th align="right">Amount</th><th align="right">Balance after</th><th align="left">Description</th></tr></thead><tbody>
+            {ledgerData.entries?.length?ledgerData.entries.map(x=><tr key={x.id}><td>{x.created_at}</td><td>{x.kind}</td><td>{x.code||x.source_id||'—'}</td><td align="right">{money(x.amount)}</td><td align="right">{money(x.balance_after)}</td><td>{x.description||'—'}</td></tr>):<tr><td colSpan="6">No credit ledger entries yet.</td></tr>}
+          </tbody></table>:<table width="100%"><thead><tr><th align="left">Date</th><th align="left">Type</th><th align="right">Points</th><th align="right">Balance after</th><th align="left">Description</th></tr></thead><tbody>
+            {ledgerData.entries?.length?ledgerData.entries.map(x=><tr key={x.id}><td>{x.created_at}</td><td>{x.kind}</td><td align="right">{['redeem','exchange_reverse'].includes(x.kind)?'-':''}{x.points}</td><td align="right">{x.balance_after}</td><td>{x.description||'—'}</td></tr>):<tr><td colSpan="5">No points ledger entries yet.</td></tr>}
+          </tbody></table>}
+        </div>
+      </>}
+    </div>
+  </td></tr>;
+  return <div>
+    <Form label={__('কাস্টমার যোগ')} fields={['name','phone']} onSubmit={async f=>{await api('/customers',{method:'POST',body:{name:f.name,phone:f.phone||undefined}});load()}} />
+    <div style={{overflowX:'auto'}}><table width="100%"><thead><tr><th align="left">{__('নাম')}</th><th>{__('ফোন')}</th><th>{__('বাকি')}</th><th>{__('পয়েন্ট')}</th><th></th></tr></thead><tbody>
+      {l.map(c=><React.Fragment key={c.id}>
+        <tr><td>{c.name}</td><td>{c.phone}</td><td>{money(c.due)}</td><td>{c.points||0}</td><td style={{whiteSpace:'nowrap'}}>
+          {me.role!=='cashier'&&<button onClick={()=>showLedger(c,'credit')}>{expandedCustomer?.id===c.id?'Hide Ledger':'View Ledger'}</button>}
+          {c.due>0&&<button onClick={async()=>{const a=+prompt(__('কত টাকা পেলেন?'));if(a){try{await api(`/customers/${c.id}/pay`,{method:'POST',body:{amount:a}});load()}catch(e){alert(e.message)}}}}>{__('বাকি আদায়')}</button>}
+        </td></tr>
+        {expandedCustomer?.id===c.id&&ledgerPanel(c)}
+      </React.Fragment>)}
+    </tbody></table></div>
+  </div>;
+}div>;
 }
 export function Stock() {
   const [sup, setSup] = useState([]);
