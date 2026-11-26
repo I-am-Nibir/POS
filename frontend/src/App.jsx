@@ -254,5 +254,27 @@ export function receipt(r, lines, total, vat, disc, settings = {}, targetWindow 
   let barcodeSvg=''; try { const node=document.createElementNS('http://www.w3.org/2000/svg','svg'); JsBarcode(node, String(r.invoice||''), {format:'CODE128',displayValue:false,width:1,height:28,margin:0}); barcodeSvg=node.outerHTML; } catch {}
   const rows=lines.map(l=>`<div class="item"><span>${esc(l.p.name)}${s.showProductId?`<small><br>${esc(l.p.sku||l.p.id)}</small>`:''}<br>${l.qty} × ${Number(l.p.price).toFixed(2)}</span><b>${(l.p.price*l.qty).toFixed(2)}</b></div>`).join('');
   w.document.write(`<!doctype html><html><head><title>Receipt ${esc(r.invoice)}</title><style>@page{size:${s.paper}mm auto;margin:2mm}*{box-sizing:border-box}body{font:12px/1.4 Arial,sans-serif;width:${width};margin:0 auto;color:#111}.c{text-align:center}.logo{max-width:65%;max-height:65px;object-fit:contain}.item,.line{display:flex;justify-content:space-between;gap:8px}.item{margin:6px 0;text-align:left}hr{border:0;border-top:1px dashed #555;margin:8px 0}.total{font-size:16px;font-weight:bold}.muted{font-size:11px}.invoice-barcode{width:100%;max-width:100%;overflow:hidden;margin:8px 0}.invoice-barcode svg{display:block;width:100%;max-width:100%;height:28px;margin:0 auto}.exchange-policy{font-size:10px;text-align:left;white-space:normal;overflow-wrap:anywhere;line-height:1.35;margin-top:8px}.exchange-policy b{display:block;text-align:center;margin:4px 0}</style></head><body><div class="c">${s.showLogo&&s.logo?`<img class="logo" src="${s.logo}">`:''}${s.showName?`<h2>${esc(s.name)}</h2>`:''}${s.showAddress&&s.address?`<div>${esc(s.address)}</div>`:''}${s.showPhone&&s.phone?`<div>${esc(s.phone)}</div>`:''}${s.showEmail&&s.email?`<div>${esc(s.email)}</div>`:''}${s.showWebsite&&s.website?`<div>${esc(s.website)}</div>`:''}</div><hr><div>Invoice: ${esc(r.invoice)}</div><div>${esc(r.created_at?new Date(String(r.created_at).replace(' ','T')+'Z').toLocaleString():new Date().toLocaleString())}</div>${r.status&&r.status!=='completed'?`<div><b>Status: ${esc(r.status.toUpperCase())}</b></div>`:''}${s.showCustomer?`<div>Customer: ${esc(r.customer||'Walking customer')}</div>`:''}${s.showCashier?`<div>Cashier: ${esc(r.cashier||'')}</div>`:''}<hr><b>PRODUCT / QTY / AMOUNT</b>${rows}<hr><div class="line"><span>Subtotal</span><span>${(total+disc-vat).toFixed(2)}</span></div>${s.showDiscount?`<div class="line"><span>Discount</span><span>-${Number(disc).toFixed(2)}</span></div>`:''}${s.showTax?`<div class="line"><span>VAT / Tax</span><span>${Number(vat).toFixed(2)}</span></div>`:''}<div class="line total"><span>GRAND TOTAL</span><span>${Number(total).toFixed(2)}</span></div>${s.showPayment?`<div class="line"><span>Payment</span><span>${esc(r.method||'')}</span></div>`:''}<div class="line"><span>Paid</span><span>${Number(r.paid??total).toFixed(2)}</span></div>${r.change>0?`<div class="line"><span>Change</span><span>${Number(r.change).toFixed(2)}</span></div>`:''}${r.due>0?`<div class="line"><span>Due</span><span>${Number(r.due).toFixed(2)}</span></div>`:''}${s.showBarcode?`<div class="invoice-barcode">${barcodeSvg}</div>`:''}${s.showExchangePolicy?`<section class="exchange-policy"><hr><b>EXCHANGE POLICY</b><div>${esc(String(s.exchangePolicyText||'').replaceAll('{days}',String(s.exchangeDays??5))).replace(/\n/g,'<br>')}</div><b>${esc(s.exchangeNoRefundText||'NO RETURN – NO REFUND.')}</b><div>${esc(s.exchangeClosingText||'Thank you for shopping with us.')}</div></section>`:''}${s.showThankYou?`<p class="c">${esc(s.thankYou)}</p>`:''}${s.showFooter&&s.footer?`<p class="c muted">${esc(s.footer)}</p>`:''}</body></html>`);
-  w.document.close();w.focus();w.print();
+  w.document.close();
+  // Wait for the receipt logo (and any other images) to finish loading
+  // before opening the browser print dialog. Otherwise the preview can show
+  // the logo while the printed memo omits it.
+  const printWhenReady = async () => {
+    try {
+      if (w.document.fonts?.ready) await w.document.fonts.ready;
+      const images = Array.from(w.document.images || []);
+      await Promise.all(images.map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        if (typeof img.decode === 'function') return img.decode().catch(() => {});
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+      }));
+    } catch {}
+    w.focus();
+    // Give the print layout one frame to recalculate after image decoding.
+    await new Promise(resolve => w.requestAnimationFrame(() => w.requestAnimationFrame(resolve)));
+    w.print();
+  };
+  printWhenReady();
 }
