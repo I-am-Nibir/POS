@@ -53,7 +53,7 @@ app.put('/api/products/:id',auth('admin','manager'),wrap(req=>{const d=parse(P,r
 
 const r2=n=>Math.round(n*100)/100;
 app.post('/api/sales',auth(),wrap(req=>{
- const d=parse(z.object({items:z.array(z.object({id:z.number().int(),qty:z.number().int().positive().max(10000)})).min(1).max(200),discount:z.number().min(0).default(0),method:z.enum(['cash','card','bkash','nagad','due']),customerId:z.number().int().optional(),at:z.string().datetime().optional(),coupon:z.string().max(30).optional(),gift:z.string().max(30).optional(),paid:z.number().min(0),customer:z.string().max(100).optional(),key:z.string().min(8).max(64)}),req.body);
+ const d=parse(z.object({items:z.array(z.object({id:z.number().int(),qty:z.number().int().positive().max(10000)})).min(1).max(200),discount:z.number().min(0).default(0),method:z.enum(['cash','card','bkash','nagad','due']),customerId:z.number().int().optional(),at:z.string().datetime().optional(),coupon:z.string().max(30).optional(),gift:z.string().max(30).optional(),storeCreditCode:z.string().max(40).optional(),voucherCode:z.string().max(40).optional(),paid:z.number().min(0),customer:z.string().max(100).optional(),key:z.string().min(8).max(64)}),req.body);
  const dup=db.prepare('select id,invoice from sales where idem_key=?').get(d.key);if(dup)return{...dup,duplicate:true};
  return db.transaction(()=>{let sub=0,vat=0;const lines=[];
   for(const it of d.items){const p=db.prepare('select * from products where id=? and active=1 and (is_demo=0 or ?)').get(it.id,app.locals.demoOn()?1:0);
@@ -63,16 +63,29 @@ app.post('/api/sales',auth(),wrap(req=>{
   if(d.coupon)d.discount=r2(d.discount+app.locals.coupon(d.coupon,sub-d.discount));
   if(d.discount>sub)throw err(400,'Combined discount is more than the subtotal');
   if(req.user.role==='cashier'&&d.discount>sub*0.1+0.000001)throw err(403,'Cashier discount cannot exceed 10%');const f=sub?(sub-d.discount)/sub:0;lines.forEach(l=>{l.vat=r2(l.vat*f);vat+=l.vat});
-  const total=r2(sub-d.discount+vat);const gift=d.gift?app.locals.gift(d.gift,total):0;if(d.method==='due'){if(!d.customerId)throw err(400,'Select a customer for a due sale')}else if(d.paid+gift<total)throw err(400,'Amount received is less than the total');
-  const paidNow=Math.min(d.paid+gift,total);
+  const total=r2(sub-d.discount+vat);
+  const hasCredit=!!d.storeCreditCode,hasVoucher=!!d.voucherCode;
+  if(hasCredit&&hasVoucher)throw err(400,'Use either store credit or one voucher per sale');
+  if((hasCredit||hasVoucher)&&(d.discount>0||d.coupon||d.gift))throw err(400,'Store credit or voucher cannot be combined with discounts, coupons or gift cards');
+  if(hasCredit||hasVoucher){if(!d.customerId)throw err(400,'Select the customer account linked to this credit');if(!db.prepare('select 1 from customers where id=?').get(d.customerId))throw err(404,'Customer not found');}
+  let creditUse=0,creditRow=null,voucherRow=null;
+  if(hasCredit){creditRow=db.prepare("select * from store_credits where upper(code)=upper(?) and customer_id=? and balance>0 and (expires_at is null or datetime(expires_at)>datetime('now'))").get(d.storeCreditCode,d.customerId);if(!creditRow)throw err(400,'Store credit is invalid, expired, empty or belongs to another customer');creditUse=Math.min(creditRow.balance,total);}
+  if(hasVoucher){voucherRow=db.prepare("select v.* from exchange_vouchers v left join voucher_redemptions r on r.voucher_id=v.id where upper(v.code)=upper(?) and v.balance>0 and r.id is null and (v.expires_at is null or datetime(v.expires_at)>datetime('now'))").get(d.voucherCode);if(!voucherRow)throw err(400,'Voucher is invalid, expired or already used');if(voucherRow.customer_id&&voucherRow.customer_id!==d.customerId)throw err(400,'Voucher belongs to another customer');creditUse=Math.min(voucherRow.balance,total);}
+  const gift=d.gift?app.locals.gift(d.gift,total):0;
+  if(d.method==='due'){if(!d.customerId)throw err(400,'Select a customer for a due sale')}else if(d.paid+gift+creditUse<total)throw err(400,'Amount received is less than the total');
+  const paidNow=Math.min(d.paid+gift+creditUse,total);
   const inv='INV-'+Date.now().toString(36).toUpperCase()+crypto.randomInt(100,999);
-  const s=db.prepare('insert into sales(invoice,user_id,subtotal,discount,vat,total,paid,method,customer,idem_key) values(?,?,?,?,?,?,?,?,?,?)').run(inv,req.user.id,r2(sub),d.discount,r2(vat),total,d.paid,d.method,d.customer||null,d.key);
+  const customerName=d.customer||(d.customerId?db.prepare('select name from customers where id=?').get(d.customerId)?.name:null);
+  const s=db.prepare('insert into sales(invoice,user_id,subtotal,discount,vat,total,paid,method,customer,idem_key) values(?,?,?,?,?,?,?,?,?,?)').run(inv,req.user.id,r2(sub),d.discount,r2(vat),total,r2(d.paid+gift+creditUse),d.method,customerName||null,d.key);
+  if(creditRow){const bal=r2(creditRow.balance-creditUse);db.prepare('update store_credits set balance=? where id=? and balance>=?').run(bal,creditRow.id,creditUse);const after=r2(db.prepare("select coalesce(sum(balance),0) v from store_credits where customer_id=?").get(d.customerId).v);db.prepare("insert into credit_ledger(customer_id,kind,source_id,code,amount,balance_after,description,created_by) values(?,'spend',?,?,?,?,?,?)").run(d.customerId,s.lastInsertRowid,creditRow.code,creditUse,after,'Store credit redeemed on '+inv,req.user.id);}
+  if(voucherRow){db.prepare('insert into voucher_redemptions(voucher_id,sale_id,amount,redeemed_by) values(?,?,?,?)').run(voucherRow.id,s.lastInsertRowid,creditUse,req.user.id);db.prepare('update exchange_vouchers set balance=0 where id=?').run(voucherRow.id);if(voucherRow.customer_id){const bal=r2(db.prepare('select coalesce(sum(balance),0) v from store_credits where customer_id=?').get(voucherRow.customer_id).v);db.prepare("insert into credit_ledger(customer_id,kind,source_id,code,amount,balance_after,description,created_by) values(?,'voucher_redeem',?,?,?,?,?,?)").run(voucherRow.customer_id,s.lastInsertRowid,voucherRow.code,creditUse,bal,'Exchange voucher redeemed on '+inv,req.user.id);}}
+
   for(const l of lines){db.prepare('insert into sale_items(sale_id,product_id,name,qty,price,vat) values(?,?,?,?,?,?)').run(s.lastInsertRowid,l.p.id,l.p.name,l.qty,l.p.price,l.vat);
    db.prepare('update products set stock=stock-? where id=?').run(l.qty,l.p.id);}
   if(d.customerId){if(!db.prepare('select 1 from customers where id=? and (is_demo=0 or ?)').get(d.customerId,app.locals.demoOn()?1:0))throw err(400,'Customer not found');
   db.prepare('update customers set due=due+?,points=points+? where id=?').run(r2(total-paidNow),Math.floor(total/100),d.customerId);db.prepare('update sales set customer_id=? where id=?').run(d.customerId,s.lastInsertRowid)}
   if(d.at){const t=Date.parse(d.at),n=Date.now();if(!(t<=n+6e4&&t>n-7*864e5))throw err(400,'Invalid offline sale time');db.prepare('update sales set created_at=? where id=?').run(new Date(t).toISOString().slice(0,19).replace('T',' '),s.lastInsertRowid)}
-  log(req.user.id,d.at?'sale_offline':'sale',{inv,total});return{id:s.lastInsertRowid,invoice:inv,total,change:Math.max(0,r2(d.paid+gift-total)),gift,due:r2(total-paidNow)}})();}));
+  log(req.user.id,d.at?'sale_offline':'sale',{inv,total});return{id:s.lastInsertRowid,invoice:inv,total,change:Math.max(0,r2(d.paid+gift+creditUse-total)),gift,creditUsed:creditUse,creditType:hasCredit?'store_credit':hasVoucher?'voucher':null,due:r2(total-paidNow)}})();}));
 
 app.post('/api/sales/:id/refund',auth('admin','manager'),wrap(()=>{throw err(410,'Cash refunds are not allowed. Use the Exchange workflow instead.')}));
 

@@ -45,7 +45,8 @@ function Form({
     }}>{e}</span></div>;
 }
 export function Customers() {
-  const [l, setL] = useState([]);
+  const me=JSON.parse(sessionStorage.getItem('u')||'{}');
+  const [l, setL] = useState([]), [ledger,setLedger]=useState(null), [ledgerCustomer,setLedgerCustomer]=useState(null);
   const load = () => api('/customers').then(setL);
   useEffect(() => {
     load();
@@ -61,7 +62,7 @@ export function Customers() {
       load();
     }} />
   <table width="100%"><thead><tr><th align="left">{__("নাম")}</th><th>{__("ফোন")}</th><th>{__("বাকি")}</th><th>{__("পয়েন্ট")}</th><th></th></tr></thead><tbody>
-  {l.map(c => <tr key={c.id}><td>{c.name}</td><td>{c.phone}</td><td>{c.due}</td><td>{c.points}</td><td>{c.due > 0 && <button onClick={async () => {
+  {l.map(c => <tr key={c.id}><td>{c.name}</td><td>{c.phone}</td><td>{c.due}</td><td>{c.points}</td><td>{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/credit-ledger`);setLedger(x);setLedgerCustomer(c)}catch(e){alert(e.message)}}}>Credit Ledger</button>}{c.due > 0 && <button onClick={async () => {
               const a = +prompt(__("কত টাকা পেলেন?"));
               if (a) {
                 try {

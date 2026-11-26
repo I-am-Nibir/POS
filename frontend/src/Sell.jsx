@@ -43,7 +43,9 @@ export default function Sell() {
     [cd, setCd] = useState(0),
     [gcode, setGcode] = useState(''),
     [gApplied, setGApplied] = useState(''),
-    [gift, setGift] = useState(0);
+    [gift, setGift] = useState(0),
+    [creditCode, setCreditCode] = useState(''), [creditApplied, setCreditApplied] = useState(''), [creditBalance, setCreditBalance] = useState(0),
+    [voucherCode, setVoucherCode] = useState(''), [voucherApplied, setVoucherApplied] = useState(''), [voucherBalance, setVoucherBalance] = useState(0);
   const [method, setMethod] = useState('cash'),
     [tender, setTender] = useState(''),
     [key, setKey] = useState(() => crypto.randomUUID()),
@@ -126,7 +128,8 @@ export default function Sell() {
   const vat = lines.reduce((a, l) => a + r2(l.p.price * l.qty * l.p.vat_rate / 100 * f), 0),
     total = r2(base + vat),
     giftUse = Math.min(gift, total),
-    due = r2(total - giftUse);
+    creditUse = Math.min(creditBalance || voucherBalance, total - giftUse),
+    due = r2(total - giftUse - creditUse);
   const given = tender === '' ? due : +tender,
     change = Math.max(0, r2(given - due)),
     short = method !== 'due' && method === 'cash' && given < due;
@@ -199,7 +202,7 @@ export default function Sell() {
     setCd(0);
     setGcode('');
     setGApplied('');
-    setGift(0);
+    setGift(0); setCreditCode(''); setCreditApplied(''); setCreditBalance(0); setVoucherCode(''); setVoucherApplied(''); setVoucherBalance(0);
     setTender('');
     setCust('');
     setMethod('cash');
@@ -210,7 +213,7 @@ export default function Sell() {
   const hold = () => {
     if (!lines.length) return;
     const h = [...held, {
-      cart, cust, t: Date.now(), n: lines.length, total, disc, applied, cd, code, gcode, gApplied, gift, tender, method,
+      cart, cust, t: Date.now(), n: lines.length, total, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method,
       customerName: cs.find(c => String(c.id) === String(cust))?.name || __('খুচরা ক্রেতা')
     }];
     localStorage.setItem('held', JSON.stringify(h));
@@ -223,14 +226,14 @@ export default function Sell() {
   const voidBill = () => {
     if (!lines.length) return;
     if (!confirm(__('বিল বাতিল করবেন? কার্টের সব আইটেম মুছে যাবে।'))) return;
-    const snapshot = { cart, cust, disc, applied, cd, code, gcode, gApplied, gift, tender, method };
+    const snapshot = { cart, cust, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method };
     clear();
     setMsg({ t: __('বিল বাতিল হয়েছে'), undo: snapshot });
   };
   const undoVoid = snapshot => {
     setCart(snapshot.cart || {}); setCust(snapshot.cust || ''); setDisc(snapshot.disc || 0);
     setApplied(snapshot.applied || ''); setCd(snapshot.cd || 0); setCode(snapshot.code || '');
-    setGcode(snapshot.gcode || ''); setGApplied(snapshot.gApplied || ''); setGift(snapshot.gift || 0);
+    setGcode(snapshot.gcode || ''); setGApplied(snapshot.gApplied || ''); setGift(snapshot.gift || 0); setCreditCode(snapshot.creditCode||''); setCreditApplied(snapshot.creditApplied||''); setCreditBalance(snapshot.creditBalance||0); setVoucherCode(snapshot.voucherCode||''); setVoucherApplied(snapshot.voucherApplied||''); setVoucherBalance(snapshot.voucherBalance||0);
     setTender(snapshot.tender || ''); setMethod(snapshot.method || 'cash'); setDiscIn(String(snapshot.disc || ''));
     setMsg(null); focus();
   };
@@ -253,7 +256,7 @@ export default function Sell() {
     const h = held[i];
     setCart(h.cart);
     setCust(h.cust); setDisc(h.disc || 0); setApplied(h.applied || ''); setCd(h.cd || 0);
-    setCode(h.code || ''); setGcode(h.gcode || ''); setGApplied(h.gApplied || ''); setGift(h.gift || 0);
+    setCode(h.code || ''); setGcode(h.gcode || ''); setGApplied(h.gApplied || ''); setGift(h.gift || 0); setCreditCode(h.creditCode||''); setCreditApplied(h.creditApplied||''); setCreditBalance(h.creditBalance||0); setVoucherCode(h.voucherCode||''); setVoucherApplied(h.voucherApplied||''); setVoucherBalance(h.voucherBalance||0);
     setTender(h.tender || ''); setMethod(h.method || 'cash');
     const r = held.filter((_, k) => k !== i);
     localStorage.setItem('held', JSON.stringify(r));
@@ -267,11 +270,13 @@ export default function Sell() {
       t: __("বাকির জন্য কাস্টমার বাছুন"),
       err: 1
     });
+    const dFinal = Math.max(0, Math.min(+disc || 0, manualCap));
+    if ((creditApplied || voucherApplied) && (dFinal > 0 || cd > 0 || gApplied)) return setMsg({t: __('Store credit or voucher cannot be combined with discounts, coupons or gift cards'), err: 1});
+    if (creditApplied && voucherApplied) return setMsg({t: __('Use either store credit or one voucher per sale'), err: 1});
     if (short) return setMsg({
       t: __("ক্রেতার দেওয়া টাকা কম"),
       err: 1
     });
-    const dFinal = Math.max(0, Math.min(+disc || 0, manualCap));
     const paid = method === 'due' ? tender === '' ? 0 : +tender : method === 'cash' ? given : due;
     const body = {
       items: lines.map(l => ({
@@ -284,7 +289,9 @@ export default function Sell() {
       key,
       customerId: cust ? +cust : undefined,
       coupon: applied || undefined,
-      gift: gApplied || undefined
+      gift: gApplied || undefined,
+      storeCreditCode: creditApplied || undefined,
+      voucherCode: voucherApplied || undefined
     };
     const snap = {
       lines,
@@ -323,7 +330,7 @@ export default function Sell() {
       load();
     } catch (e) {
       if (isNet(e)) {
-        if (body.coupon || body.gift) setMsg({
+        if (body.coupon || body.gift || body.storeCreditCode || body.voucherCode) setMsg({
           t: __("অফলাইনে কুপন/গিফট কার্ড চলবে না — সরিয়ে আবার চেষ্টা করুন"),
           err: 1
         });else {
@@ -420,6 +427,23 @@ export default function Sell() {
       });
     }
   };
+  const applyStoreCredit = async () => {
+    try {
+      if (!cust) throw new Error('Select the linked customer account first');
+      const c = await api('/credit/check/' + encodeURIComponent(creditCode.trim()) + '?customerId=' + encodeURIComponent(cust));
+      setCreditApplied(c.code); setCreditBalance(Number(c.balance)||0);
+      setVoucherApplied(''); setVoucherBalance(0);
+      setMsg({t:`Store credit applied: ${tk(c.balance)}`});
+    } catch(e) { setMsg({t:e.message,err:1}); setCreditApplied(''); setCreditBalance(0); }
+  };
+  const applyVoucher = async () => {
+    try {
+      const v = await api('/voucher/check/' + encodeURIComponent(voucherCode.trim()) + '?customerId=' + encodeURIComponent(cust||0));
+      setVoucherApplied(v.code); setVoucherBalance(Number(v.balance)||0);
+      setCreditApplied(''); setCreditBalance(0);
+      setMsg({t:`Voucher applied: ${tk(v.balance)} (one-time use)`});
+    } catch(e) { setMsg({t:e.message,err:1}); setVoucherApplied(''); setVoucherBalance(0); }
+  };
   const quick = [...new Set([due, Math.ceil(due / 100) * 100, Math.ceil(due / 500) * 500, Math.ceil(due / 1000) * 1000, 2000, 5000].filter(x => x >= due && x > 0))].slice(0, 5);
   const addCust = async () => {
     const n = prompt(__("কাস্টমারের নাম"));
@@ -465,7 +489,7 @@ export default function Sell() {
         }} />
     <span className={'net ' + (net ? 'on' : 'off')}>{net ? __("● অনলাইন") : __("● অফলাইন")}</span>{pend > 0 && <button className="tb" onClick={sync}>{__("⟳ সিঙ্ক (")}{pend})</button>}</div>
    <div className="cartbox">
-    <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setCq(''); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
+    <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setCq(''); setCreditApplied(''); setCreditBalance(0); setVoucherApplied(''); setVoucherBalance(0); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
      <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:cname,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
     {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.undo && <button onClick={e => { e.stopPropagation(); undoVoid(msg.undo); }}>{__('ফিরিয়ে আনুন')}</button>}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
             e.stopPropagation();
@@ -479,6 +503,7 @@ export default function Sell() {
      <tr><td>{__("কাস্টমার: ")}<b>{cname}</b></td><td>{__("সাব-টোটাল")}</td><td className="r">{tk(sub)}</td></tr>
      <tr><td>{__("কুপন: ")}<b>{applied || '—'}</b>{cd > 0 && ` (−${tk(cd)})`}</td><td><a className="dl" onClick={openDiscount}>{__("ডিসকাউন্ট")}</a></td><td className="r">{tk(disc)}</td></tr>
      <tr><td>{__("গিফট কার্ড: ")}<b>{gApplied || '—'}</b></td><td>{__("ভ্যাট")}</td><td className="r">{tk(vat)}</td></tr>
+     <tr><td>Store Credit / Voucher: <b>{creditApplied || voucherApplied || '—'}</b></td><td>Credit Used</td><td className="r">{tk(creditUse)}</td></tr>
      <tr className="gt"><td /><td>{__("মোট")}</td><td className="r">{tk(total)}</td></tr></tbody></table>
    </div>
    <div className="bottom"><button className="b-pay" title="F9" disabled={!lines.length} onClick={() => setPayOpen(true)}><Banknote size={20} /><span>{__("পেমেন্ট করুন")}</span></button><button className="b-hold" title="F4" disabled={!lines.length} onClick={hold}><Pause size={20} /><span>{__("হোল্ড")}</span></button><button className="b-disc" disabled={!lines.length} onClick={openDiscount}><Percent size={20} /><span>{__("ডিসকাউন্ট")}</span></button><button className="b-void" disabled={!lines.length} onClick={voidBill}><Trash2 size={20} /><span>{__("বিল বাতিল")}</span></button></div>
@@ -526,7 +551,7 @@ export default function Sell() {
               setTender('');
             }}>{v}</button>)}</div>
     <div className="pr"><div className="due"><small>{__("মোট দিতে হবে")}</small><b>{tk(due)}</b></div>
-     <div className="pf"><input placeholder={__("কুপন কোড")} value={code} onChange={e => setCode(e.target.value)} /><button onClick={applyCode}>{__("প্রয়োগ")}</button><input placeholder={__("গিফট কার্ড")} value={gcode} onChange={e => setGcode(e.target.value)} /><button onClick={applyGift}>{__("প্রয়োগ")}</button></div>
+     <div className="pf"><input placeholder={__("কুপন কোড")} value={code} onChange={e => setCode(e.target.value)} /><button onClick={applyCode}>{__("প্রয়োগ")}</button><input placeholder={__("গিফট কার্ড")} value={gcode} onChange={e => setGcode(e.target.value)} /><button onClick={applyGift}>{__("প্রয়োগ")}</button><input placeholder="Store Credit Code" value={creditCode} onChange={e=>setCreditCode(e.target.value)} /><button onClick={applyStoreCredit}>Apply Credit</button><input placeholder="Exchange Voucher Code" value={voucherCode} onChange={e=>setVoucherCode(e.target.value)} /><button onClick={applyVoucher}>Apply Voucher</button></div>
      {(method === 'cash' || method === 'due') && <><input className="amt" type="number" autoFocus placeholder={method === 'due' ? __("এখন কত দিল (ঐচ্ছিক)") : __("ক্রেতার দেওয়া টাকা")} value={tender} onChange={e => setTender(e.target.value)} />
       {method === 'cash' && <div className="qk">{quick.map(x => <button key={x} onClick={() => setTender(String(x))}>{x === due ? __("ঠিক টাকা") : x}</button>)}</div>}
       {method === 'cash' && given >= due && due > 0 && <div className="chg">{__("ফেরত টাকা: ")}{tk(change)}</div>}</>}
