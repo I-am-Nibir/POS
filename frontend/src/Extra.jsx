@@ -42,7 +42,10 @@ function Form({
       }
     }}>{label}</button><span style={{
       color: 'red'
-    }}>{e}</span></dexport function Customers() {
+    }}>{e}</span></div>;
+}
+
+export function Customers() {
   const me=JSON.parse(sessionStorage.getItem('u')||'{}');
   const [l,setL]=useState([]);
   const [expandedCustomer,setExpandedCustomer]=useState(null);
