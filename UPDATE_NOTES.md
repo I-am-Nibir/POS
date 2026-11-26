@@ -44,3 +44,13 @@ The existing Render blueprint is preserved. It configures a Starter service and 
 - Removed the duplicate human-readable value under the barcode because the invoice number is already printed above it.
 - Constrained the barcode SVG to the receipt content width (54mm on 58mm paper / 76mm on 80mm paper), so it cannot extend wider than the receipt's product-list column.
 - Note: very long invoice identifiers can still produce dense barcodes; test with the actual scanner and printer before production use.
+
+## Exchange policy on receipts (latest update)
+- Added an Admin-controlled Exchange Policy section to Receipt Settings.
+- The receipt policy can be shown/hidden, and the exchange period (default 5 days) is configurable.
+- Admin can edit the policy body, the `NO RETURN – NO REFUND.` notice, and the closing message.
+- `{days}` in the policy text is replaced with the configured exchange period on both live preview and printed receipts.
+- Backend validates the configured period (0–365 days) and limits policy text lengths.
+- The setting is persisted with the existing receipt configuration in SQLite.
+
+Testing note: backend syntax check passed. Frontend production build and physical thermal-printer output have not yet been verified in this environment.

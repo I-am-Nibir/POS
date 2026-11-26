@@ -301,5 +301,5 @@ export function Finance() {
               load();
             }
           }}>✕</button>}</span></div>)}</div>
-  <ReturnByInvoice onDone={load}/></div>;
+  </div>;
 }
