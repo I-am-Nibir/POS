@@ -14,7 +14,7 @@ create table if not exists audit(id integer primary key,user_id integer,action t
 create table if not exists app_settings(key text primary key,value text not null);`);
 const log=(u,a,d)=>db.prepare('insert into audit(user_id,action,detail) values(?,?,?)').run(u,a,JSON.stringify(d||{}));
 
-const app=express();app.set('trust proxy',1);app.get('/healthz',(q,r)=>r.json({ok:1}));app.use(helmet({contentSecurityPolicy:{useDefaults:true,directives:{'upgrade-insecure-requests':process.env.HTTPS==='1'?[]:null}}}));app.use(express.json({limit:'100kb'}));
+const app=express();app.set('trust proxy',1);app.get('/healthz',(q,r)=>r.json({ok:1}));app.use(helmet({contentSecurityPolicy:{useDefaults:true,directives:{'upgrade-insecure-requests':process.env.HTTPS==='1'?[]:null}}}));app.use(express.json({limit:'1mb'}));
 const err=(s,m)=>Object.assign(new Error(m),{status:s});
 const auth=(...roles)=>(req,res,next)=>{try{const t=(req.headers.authorization||'').replace('Bearer ','');
  const p=jwt.verify(t,SECRET);const u=db.prepare('select id,username,role from users where id=? and active=1').get(p.id);
@@ -111,6 +111,7 @@ require('./extra')({app,db,auth,wrap,parse,err,log,z});
 require('./extra2')({app,db,auth,wrap,parse,err,log,z});
 require('./extra3')({app,auth,wrap,parse,err,z});
 require('./demo')({app,db,auth,wrap,parse,err,log,z});
+app.use('/api', (req,res)=>res.status(404).json({error:'API endpoint not found: '+req.method+' '+req.originalUrl}));
 const dist=path.join(__dirname,'../frontend/dist');
 if(fs.existsSync(dist)){app.use(express.static(dist));app.get('*',(q,r)=>r.sendFile(path.join(dist,'index.html')))}
 app.listen(process.env.PORT||3000,()=>console.log('POS server started'));

@@ -37,13 +37,21 @@ export async function api(p, o = {}) {
   }).catch(() => {
     throw new TypeError(__("সার্ভারের সাথে যোগাযোগ করা যায়নি"));
   });
-  const j = await r.json();
+  const raw = await r.text();
+  let j;
+  try { j = raw ? JSON.parse(raw) : {}; }
+  catch {
+    const hint = raw.trim().startsWith('<!DOCTYPE') || raw.trim().startsWith('<html')
+      ? 'Server returned an HTML page instead of API JSON. Check that the latest backend is deployed and that /api requests reach the backend.'
+      : 'Server returned an invalid response.';
+    throw new Error(hint + ' (HTTP ' + r.status + ')');
+  }
   if (!r.ok) {
     if (r.status === 401 && tok()) {
       sessionStorage.clear();
       location.reload();
     }
-    throw new Error(srv(j.error));
+    throw new Error(srv(j.error || ('HTTP ' + r.status)));
   }
   return j;
 }
