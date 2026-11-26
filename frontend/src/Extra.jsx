@@ -162,6 +162,14 @@ export function Stock() {
 }
 const tk = n => __("৳") + Number(n).toLocaleString('en-IN');
 const dh = o => new Date(Date.now() + 6 * 3600e3 + o * 864e5).toISOString().slice(0, 10);
+function ReturnByInvoice({onDone}) {
+ const [invoice,setInvoice]=useState(''),[sale,setSale]=useState(null),[lines,setLines]=useState([]),[qty,setQty]=useState({}),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[video,setVideo]=useState(null);
+ const find=async(code=invoice)=>{const value=String(code||'').trim();if(!value)return alert('Enter or scan an invoice barcode');try{const d=await api(`/sales/by-invoice/${encodeURIComponent(value)}/receipt`);setSale(d.sale);setLines(d.lines);setQty({});setInvoice(d.sale.invoice)}catch(e){setSale(null);setLines([]);alert(e.message)}};
+ useEffect(()=>{if(!camera)return;let stream,stop=false;const run=async()=>{try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});if(video){video.srcObject=stream;await video.play();const detector=new BarcodeDetector({formats:['code_128','qr_code','ean_13','ean_8','code_39']});const tick=async()=>{if(stop)return;try{const found=await detector.detect(video);if(found[0]){setInvoice(found[0].rawValue);setCamera(false);find(found[0].rawValue);return}}catch{}setTimeout(tick,300)};tick()}}catch{alert('Camera scanning needs HTTPS and a supported browser');setCamera(false)}};run();return()=>{stop=true;stream?.getTracks().forEach(t=>t.stop())}},[camera,video]);
+ const submit=async()=>{if(!sale)return;const items=lines.filter(x=>Number(qty[x.p.id]||0)>0).map(x=>({id:x.p.id,qty:Number(qty[x.p.id])}));if(!items.length)return alert('Choose return quantities');setBusy(true);try{const r=await api(`/sales/${sale.id}/return`,{method:'POST',body:{items}});alert(`Refund amount: ৳${r.refund}`);setSale(null);setLines([]);setInvoice('');onDone?.()}catch(e){alert(e.message)}finally{setBusy(false)}};
+ return <div style={box}><b>Return / Refund by Invoice</b><div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'10px 0'}}><input placeholder="Invoice number / scan barcode" value={invoice} onChange={e=>setInvoice(e.target.value)} onKeyDown={e=>e.key==='Enter'&&find()}/><button style={b} onClick={()=>find()}>Find invoice</button><button style={b} onClick={()=>setCamera(x=>!x)}>📷 Scan</button></div>{camera&&<video ref={setVideo} muted playsInline style={{width:'100%',maxWidth:320}}/>}{sale&&<><p><b>{sale.invoice}</b> · {sale.created_at} · {sale.status} · {tk(sale.total)}</p><div style={{overflowX:'auto'}}><table width="100%"><thead><tr><th>Product</th><th>Sold</th><th>Return Qty</th></tr></thead><tbody>{lines.map(x=><tr key={x.p.id}><td>{x.p.name}</td><td>{x.qty}</td><td><input type="number" min="0" max={x.qty} value={qty[x.p.id]||''} onChange={e=>setQty(v=>({...v,[x.p.id]:Math.min(x.qty,Math.max(0,Number(e.target.value)||0))}))} style={{width:75}}/></td></tr>)}</tbody></table></div><button style={b} disabled={busy} onClick={submit}>{busy?'Processing…':'Process Return / Refund'}</button></>}</div>
+}
+
 export function Finance() {
   const role = JSON.parse(sessionStorage.getItem('u')).role;
   const [g, setG] = useState('day');
@@ -293,17 +301,5 @@ export function Finance() {
               load();
             }
           }}>✕</button>}</span></div>)}</div>
-  <div style={box}><b>{__("আংশিক ফেরত বা বদল")}</b><Form label={__("ফেরত নিন")} fields={['saleId', 'productId', 'qty']} onSubmit={async f => {
-        const r = await api(`/sales/${+f.saleId}/return`, {
-          method: 'POST',
-          body: {
-            items: [{
-              id: +f.productId,
-              qty: +f.qty
-            }]
-          }
-        });
-        alert(__("ফেরত দিন: ৳") + r.refund);
-        load();
-      }} /><small>{__("পণ্য বদল করতে হলে আগে ফেরত নিন, তারপর নতুন বিক্রি করুন।")}</small></div></div>;
+  <ReturnByInvoice onDone={load}/></div>;
 }

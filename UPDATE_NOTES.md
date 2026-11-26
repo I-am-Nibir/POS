@@ -28,3 +28,13 @@ The existing Render blueprint is preserved. It configures a Starter service and 
 - Receipt preferences are stored in the SQLite `app_settings` table through authenticated API endpoints, so settings persist across sessions and devices using the same database.
 - Sales now follow the configured post-payment print mode: Auto opens the browser print dialog; Manual leaves a receipt print action available after the sale. Reprint uses the saved current receipt settings.
 - Browser print dialogs are subject to browser popup/print permissions. This does not provide unattended silent printing; that requires a supported local/thermal printer integration.
+
+
+## Sales report receipt reprint update
+
+- Added a Print button to every row in Reports → Sales list.
+- Added authenticated `GET /api/sales/:id/receipt` for managers/admins; it retrieves the saved sale and original line items from SQLite, including product-name snapshots.
+- Reprints use the current admin-configured receipt settings (58mm/80mm, logo and visibility options).
+- The original sale timestamp is printed; refunded/other non-completed statuses are labelled on the receipt.
+- The print window is opened directly from the click event before the API request to reduce browser popup-blocking issues. Allow pop-ups for the POS site if prompted.
+- Reprint availability follows the current demo-data visibility setting.

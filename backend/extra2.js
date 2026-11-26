@@ -39,6 +39,13 @@ module.exports=({app,db,auth,wrap,parse,err,log,z})=>{
  // Reports by date + Excel export
  const rng=q=>({z:TZ,f:String(q.from||'1970-01-01'),t:String(q.to||'2999-12-31')});
  const W="s.status='completed' and date(s.created_at,@z) between @f and @t and (s.is_demo=0 or @d)";
+ app.get('/api/sales/by-invoice/:invoice/receipt',M,wrap(req=>{const invoice=String(req.params.invoice||'').trim();if(!invoice||invoice.length>80)throw err(400,'Invalid invoice number');const sale=db.prepare('select s.*,u.username cashier from sales s left join users u on u.id=s.user_id where upper(s.invoice)=upper(?) and (s.is_demo=0 or ?)').get(invoice,app.locals.demoOn()?1:0);if(!sale)throw err(404,'Invoice not found');const lines=db.prepare('select si.product_id,si.name,si.qty,si.price,si.vat,pr.sku from sale_items si left join products pr on pr.id=si.product_id where si.sale_id=? order by si.id').all(sale.id).map(x=>({p:{id:x.product_id,name:x.name,sku:x.sku||String(x.product_id),price:x.price},qty:x.qty,vat:x.vat}));return {sale,lines};}));
+ app.get('/api/sales/:id/receipt',M,wrap(req=>{const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)throw err(400,'Invalid sale ID');
+  const sale=db.prepare('select s.*,u.username cashier from sales s left join users u on u.id=s.user_id where s.id=? and (s.is_demo=0 or ?)').get(id,app.locals.demoOn()?1:0);
+  if(!sale)throw err(404,'Sale not found');
+  const lines=db.prepare('select si.product_id,si.name,si.qty,si.price,si.vat,pr.sku from sale_items si left join products pr on pr.id=si.product_id where si.sale_id=? order by si.id').all(id).map(x=>({p:{id:x.product_id,name:x.name,sku:x.sku||String(x.product_id),price:x.price},qty:x.qty,vat:x.vat}));
+  return {sale,lines};
+ }));
  app.get('/api/reports/detail',M,wrap(req=>{const p={...rng(req.query),d:app.locals.demoOn()?1:0};
   const J='from sale_items si join sales s on s.id=si.sale_id join products pr on pr.id=si.product_id';
   return{byMethod:db.prepare(`select s.method,count(*) n,sum(s.total) total from sales s where ${W} group by s.method`).all(p),

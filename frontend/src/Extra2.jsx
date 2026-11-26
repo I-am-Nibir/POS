@@ -3,7 +3,7 @@ import { rl, tv } from './i18n.js';
 const ROLES = ['cashier', 'manager', 'admin'];
 import { useState, useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
-import { api } from './App.jsx';
+import { api, receipt } from './App.jsx';
 const box = {
     border: '1px solid #e5e7eb',
     borderRadius: 10,
@@ -316,30 +316,27 @@ export function Reports() {
   const [from, setFrom] = useState(dh(-29));
   const [to, setTo] = useState(dh(0));
   const [r, setR] = useState();
-  useEffect(() => {
-    api(`/reports/detail?from=${from}&to=${to}`).then(setR);
-  }, [from, to]);
-  const T = ({
-    h,
-    rows,
-    cols
-  }) => <div style={box}><b>{h}</b><table width="100%"><tbody>{rows.map((x, i) => <tr key={i}>{cols.map(c => <td key={c}>{typeof x[c] === 'number' && c !== 'qty' && c !== 'n' ? tk(x[c]) : tv(x[c])}</td>)}</tr>)}</tbody></table></div>;
-  return <div><div className="noprint" style={{
-      display: 'flex',
-      gap: 8,
-      flexWrap: 'wrap',
-      marginBottom: 12,
-      alignItems: 'center'
-    }}><input type="date" value={from} onChange={x => setFrom(x.target.value)} />{__(" থেকে ")}<input type="date" value={to} onChange={x => setTo(x.target.value)} />
-  <button style={b} onClick={() => dl('sales', from, to)}>{__("Excel: বিক্রি")}</button><button style={b} onClick={() => dl('expenses', from, to)}>{__("Excel: খরচ")}</button><button style={b} onClick={() => dl('products', from, to)}>{__("Excel: পণ্য/স্টক")}</button><button style={b} onClick={() => window.print()}>{__("PDF / প্রিন্ট")}</button></div>
-  <h3 style={{
-      margin: '0 0 8px'
-    }}>{__("রিপোর্ট: ")}{from} → {to}</h3>
-  {r && <><T h={__("পেমেন্ট পদ্ধতি")} rows={r.byMethod} cols={['method', 'n', 'total']} /><T h={__("ক্যাটাগরি অনুযায়ী")} rows={r.byCategory} cols={['category', 'qty', 'revenue']} /><T h={__("সেরা ২০ পণ্য")} rows={r.top.map(x => ({
-        ...x,
-        name: `${x.name} ${x.size || ''} ${x.color || ''}`
-      }))} cols={['name', 'qty', 'revenue']} />
-  <T h={__("বিক্রির তালিকা (সর্বোচ্চ ৫০০)")} rows={r.sales} cols={['invoice', 'created_at', 'cashier', 'method', 'status', 'total']} /></>}</div>;
+  const [receiptCfg, setReceiptCfg] = useState({paper:'80',printMode:'manual'});
+  const [printingId, setPrintingId] = useState(null);
+  useEffect(() => { api(`/reports/detail?from=${from}&to=${to}`).then(setR); }, [from, to]);
+  useEffect(() => { api('/receipt-settings').then(setReceiptCfg).catch(()=>{}); }, []);
+  const reprintSale = async (id) => {
+    const printWindow = window.open('', '_blank', 'width=380,height=700');
+    if (!printWindow) { alert('Please allow pop-ups to print receipts.'); return; }
+    setPrintingId(id);
+    try {
+      const data = await api(`/sales/${id}/receipt`);
+      const s = data.sale;
+      receipt({invoice:s.invoice,created_at:s.created_at,status:s.status,customer:s.customer,cashier:s.cashier,method:s.method,paid:s.paid,change:Math.max(0,Number(s.paid||0)-Number(s.total||0)),due:Math.max(0,Number(s.total||0)-Number(s.paid||0))}, data.lines, s.total, s.vat, s.discount, receiptCfg, printWindow);
+    } catch (e) { printWindow.close(); alert(e.message || 'Could not load receipt'); }
+    finally { setPrintingId(null); }
+  };
+  const T = ({h,rows,cols}) => <div style={box}><b>{h}</b><table width="100%"><tbody>{rows.map((x,i)=><tr key={i}>{cols.map(c=><td key={c}>{typeof x[c]==='number'&&c!=='qty'&&c!=='n'?tk(x[c]):tv(x[c])}</td>)}</tr>)}</tbody></table></div>;
+  return <div><div className="noprint" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12,alignItems:'center'}}><input type="date" value={from} onChange={x=>setFrom(x.target.value)}/>{__(' থেকে ')}<input type="date" value={to} onChange={x=>setTo(x.target.value)}/>
+  <button style={b} onClick={()=>dl('sales',from,to)}>{__('Excel: বিক্রি')}</button><button style={b} onClick={()=>dl('expenses',from,to)}>{__('Excel: খরচ')}</button><button style={b} onClick={()=>dl('products',from,to)}>{__('Excel: পণ্য/স্টক')}</button><button style={b} onClick={()=>window.print()}>{__('PDF / প্রিন্ট')}</button></div>
+  <h3 style={{margin:'0 0 8px'}}>{__('রিপোর্ট: ')}{from} → {to}</h3>
+  {r&&<><T h={__('পেমেন্ট পদ্ধতি')} rows={r.byMethod} cols={['method','n','total']}/><T h={__('ক্যাটাগরি অনুযায়ী')} rows={r.byCategory} cols={['category','qty','revenue']}/><T h={__('সেরা ২০ পণ্য')} rows={r.top.map(x=>({...x,name:`${x.name} ${x.size||''} ${x.color||''}`}))} cols={['name','qty','revenue']}/>
+  <div style={box}><b>{__('বিক্রির তালিকা (সর্বোচ্চ ৫০০)')}</b><div style={{overflowX:'auto'}}><table width="100%"><thead><tr><th>Invoice</th><th>Date</th><th>Cashier</th><th>Payment</th><th>Status</th><th>Total</th><th className="noprint">Receipt</th></tr></thead><tbody>{r.sales.map(s=><tr key={s.id}><td>{s.invoice}</td><td>{s.created_at}</td><td>{s.cashier||'—'}</td><td>{s.method}</td><td>{s.status}</td><td>{tk(s.total)}</td><td className="noprint"><button style={b} disabled={printingId===s.id} onClick={()=>reprintSale(s.id)}>{printingId===s.id?'Loading…':'🖨 Print'}</button></td></tr>)}</tbody></table></div></div></>}</div>;
 }
 export function Users() {
   const [l, setL] = useState([]);
