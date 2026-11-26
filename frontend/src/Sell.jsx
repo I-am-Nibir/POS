@@ -33,6 +33,8 @@ export default function Sell() {
     [cart, setCart] = useState({}),
     [cs, setCs] = useState([]),
     [cust, setCust] = useState('');
+  const [loyaltyCfg, setLoyaltyCfg] = useState({enabled:true,earnAmount:100,earnPoints:1,redeemValue:1,minRedeemPoints:10,maxRedeemPoints:500}),
+    [redeemPoints, setRedeemPoints] = useState(0);
   const [disc, setDisc] = useState(0),
     [discMode, setDiscMode] = useState('amt'),
     [discIn, setDiscIn] = useState(''),
@@ -90,6 +92,7 @@ export default function Sell() {
   };
   useEffect(() => {
     api('/receipt-settings').then(setReceiptCfg).catch(()=>{});
+    api('/loyalty-settings').then(setLoyaltyCfg).catch(()=>{});
     load();
     focus();
     loadCfg().then(setCfg);
@@ -121,12 +124,16 @@ export default function Sell() {
     qty
   })).filter(l => l.p);
   const sub = lines.reduce((a, l) => a + l.p.price * l.qty, 0),
-    base = Math.max(0, sub - disc - cd),
+    selectedCustomer = cs.find(c => String(c.id) === String(cust)),
+    currentPoints = Number(selectedCustomer?.points || 0),
+    loyaltyDiscount = Math.max(0, Number(redeemPoints)||0) * Number(loyaltyCfg.redeemValue||0),
+    base = Math.max(0, sub - disc - cd - loyaltyDiscount),
     f = sub ? base / sub : 0;
   const capDisc = () => isCashier ? sub * 0.10 : sub;
   const manualCap = Math.max(0, capDisc() - cd);
   const vat = lines.reduce((a, l) => a + r2(l.p.price * l.qty * l.p.vat_rate / 100 * f), 0),
     total = r2(base + vat),
+    estimatedEarnedPoints = loyaltyCfg.enabled && selectedCustomer ? Math.floor(base / Math.max(1, Number(loyaltyCfg.earnAmount)||100)) * (Number(loyaltyCfg.earnPoints)||1) : 0,
     giftUse = Math.min(gift, total),
     creditUse = Math.min(creditBalance || voucherBalance, total - giftUse),
     due = r2(total - giftUse - creditUse);
@@ -204,6 +211,7 @@ export default function Sell() {
     setGApplied('');
     setGift(0); setCreditCode(''); setCreditApplied(''); setCreditBalance(0); setVoucherCode(''); setVoucherApplied(''); setVoucherBalance(0);
     setTender('');
+    setRedeemPoints(0);
     setCust('');
     setMethod('cash');
     setKey(crypto.randomUUID());
@@ -213,7 +221,7 @@ export default function Sell() {
   const hold = () => {
     if (!lines.length) return;
     const h = [...held, {
-      cart, cust, t: Date.now(), n: lines.length, total, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method,
+      cart, cust, redeemPoints, t: Date.now(), n: lines.length, total, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method,
       customerName: cs.find(c => String(c.id) === String(cust))?.name || __('খুচরা ক্রেতা')
     }];
     localStorage.setItem('held', JSON.stringify(h));
@@ -226,12 +234,12 @@ export default function Sell() {
   const voidBill = () => {
     if (!lines.length) return;
     if (!confirm(__('বিল বাতিল করবেন? কার্টের সব আইটেম মুছে যাবে।'))) return;
-    const snapshot = { cart, cust, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method };
+    const snapshot = { cart, cust, redeemPoints, disc, applied, cd, code, gcode, gApplied, gift, creditCode, creditApplied, creditBalance, voucherCode, voucherApplied, voucherBalance, tender, method };
     clear();
     setMsg({ t: __('বিল বাতিল হয়েছে'), undo: snapshot });
   };
   const undoVoid = snapshot => {
-    setCart(snapshot.cart || {}); setCust(snapshot.cust || ''); setDisc(snapshot.disc || 0);
+    setCart(snapshot.cart || {}); setCust(snapshot.cust || ''); setRedeemPoints(snapshot.redeemPoints || 0); setDisc(snapshot.disc || 0);
     setApplied(snapshot.applied || ''); setCd(snapshot.cd || 0); setCode(snapshot.code || '');
     setGcode(snapshot.gcode || ''); setGApplied(snapshot.gApplied || ''); setGift(snapshot.gift || 0); setCreditCode(snapshot.creditCode||''); setCreditApplied(snapshot.creditApplied||''); setCreditBalance(snapshot.creditBalance||0); setVoucherCode(snapshot.voucherCode||''); setVoucherApplied(snapshot.voucherApplied||''); setVoucherBalance(snapshot.voucherBalance||0);
     setTender(snapshot.tender || ''); setMethod(snapshot.method || 'cash'); setDiscIn(String(snapshot.disc || ''));
@@ -255,7 +263,7 @@ export default function Sell() {
   const recall = i => {
     const h = held[i];
     setCart(h.cart);
-    setCust(h.cust); setDisc(h.disc || 0); setApplied(h.applied || ''); setCd(h.cd || 0);
+    setCust(h.cust); setRedeemPoints(h.redeemPoints || 0); setDisc(h.disc || 0); setApplied(h.applied || ''); setCd(h.cd || 0);
     setCode(h.code || ''); setGcode(h.gcode || ''); setGApplied(h.gApplied || ''); setGift(h.gift || 0); setCreditCode(h.creditCode||''); setCreditApplied(h.creditApplied||''); setCreditBalance(h.creditBalance||0); setVoucherCode(h.voucherCode||''); setVoucherApplied(h.voucherApplied||''); setVoucherBalance(h.voucherBalance||0);
     setTender(h.tender || ''); setMethod(h.method || 'cash');
     const r = held.filter((_, k) => k !== i);
@@ -271,7 +279,10 @@ export default function Sell() {
       err: 1
     });
     const dFinal = Math.max(0, Math.min(+disc || 0, manualCap));
-    if ((creditApplied || voucherApplied) && (dFinal > 0 || cd > 0 || gApplied)) return setMsg({t: __('Store credit or voucher cannot be combined with discounts, coupons or gift cards'), err: 1});
+    if ((creditApplied || voucherApplied) && (dFinal > 0 || cd > 0 || gApplied || redeemPoints > 0)) return setMsg({t: __('Store credit or voucher cannot be combined with discounts, coupons or gift cards'), err: 1});
+    if (redeemPoints > 0 && !cust) return setMsg({t: __('Select a registered customer to redeem loyalty points'), err: 1});
+    if (!navigator.onLine && redeemPoints > 0) return setMsg({t: __('Loyalty point redemption requires an internet connection'), err: 1});
+    if (redeemPoints > currentPoints || redeemPoints > Number(loyaltyCfg.maxRedeemPoints || 0) || (redeemPoints > 0 && redeemPoints < Number(loyaltyCfg.minRedeemPoints || 0))) return setMsg({t: __('Invalid loyalty points amount'), err: 1});
     if (creditApplied && voucherApplied) return setMsg({t: __('Use either store credit or one voucher per sale'), err: 1});
     if (short) return setMsg({
       t: __("ক্রেতার দেওয়া টাকা কম"),
@@ -291,19 +302,21 @@ export default function Sell() {
       coupon: applied || undefined,
       gift: gApplied || undefined,
       storeCreditCode: creditApplied || undefined,
-      voucherCode: voucherApplied || undefined
+      voucherCode: voucherApplied || undefined,
+      redeemPoints: Number(redeemPoints)||0
     };
     const snap = {
       lines,
       total,
       vat,
-      disc: dFinal + cd,
+      disc: dFinal + cd + loyaltyDiscount,
       paid,
-      method
+      method,
+      customerName: cname, customerId: cust ? Number(cust) : null, pointsRedeemed: Number(redeemPoints)||0, loyaltyDiscount
     };
     const finish = async (r, off) => {
       const L = {
-        r,
+        r: {...r, customer: snap.customerName, pointsRedeemed: r.pointsRedeemed ?? snap.pointsRedeemed, pointsEarned: r.pointsEarned ?? 0, pointsBalance: r.pointsBalance ?? (snap.customerId ? currentPoints : null)},
         ...snap,
         off
       };
@@ -315,7 +328,7 @@ export default function Sell() {
       });
       beep(1);
       try {
-        if(receiptCfg.printMode==='auto') receipt(r, lines, total, vat, dFinal+cd, {...receiptCfg,method,paid,customer:cname,cashier:user.username});
+        if(receiptCfg.printMode==='auto') receipt({...r,customer:snap.customerName,pointsRedeemed:r.pointsRedeemed||0,pointsEarned:r.pointsEarned||0,pointsBalance:r.pointsBalance??(snap.customerId?currentPoints:null)}, lines, total, vat, dFinal+cd+loyaltyDiscount, {...receiptCfg,method,paid,customer:snap.customerName,cashier:user.username});
       } catch (e) { console.warn('Receipt print failed',e); }
       clear();
     };
@@ -480,7 +493,7 @@ export default function Sell() {
       });
     }
   };
-  const cname = cs.find(c => String(c.id) === String(cust))?.name || __("খুচরা ক্রেতা");
+  const cname = selectedCustomer?.name || __("খুচরা ক্রেতা");
   const customerOptions = cs.filter(c => !cq || `${c.name} ${c.phone || ''}`.toLowerCase().includes(cq.toLowerCase()));
   return <div className={'nx' + (light ? ' light' : '')}>
   <section className="cartp">
@@ -489,11 +502,12 @@ export default function Sell() {
         }} />
     <span className={'net ' + (net ? 'on' : 'off')}>{net ? __("● অনলাইন") : __("● অফলাইন")}</span>{pend > 0 && <button className="tb" onClick={sync}>{__("⟳ সিঙ্ক (")}{pend})</button>}</div>
    <div className="cartbox">
-    <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setCq(''); setCreditApplied(''); setCreditBalance(0); setVoucherApplied(''); setVoucherBalance(0); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
-     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:cname,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
+    <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setRedeemPoints(0); setCq(''); setCreditApplied(''); setCreditBalance(0); setVoucherApplied(''); setVoucherBalance(0); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
+     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:last.customerName||last.r.customer,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
+    {loyaltyCfg.enabled && <div className="card" style={{margin:'8px 0',padding:10,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}><b>Reward Points</b>{cust ? <><span>Available: {currentPoints}</span><label>Redeem points <input type="number" min="0" max={Math.min(currentPoints,loyaltyCfg.maxRedeemPoints)} step="1" value={redeemPoints||''} onChange={e=>setRedeemPoints(Math.max(0,Math.floor(Number(e.target.value)||0))) } style={{width:90}} /></label><span>Value: {tk(loyaltyDiscount)}</span><button type="button" onClick={()=>setRedeemPoints(0)} disabled={!redeemPoints}>Clear</button><small>Min {loyaltyCfg.minRedeemPoints}, max {loyaltyCfg.maxRedeemPoints} points per sale</small></> : <span>Select a registered customer to use points</span>}<span style={{marginLeft:'auto'}}>Estimated earn: {estimatedEarnedPoints} pts</span></div>}
     {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.undo && <button onClick={e => { e.stopPropagation(); undoVoid(msg.undo); }}>{__('ফিরিয়ে আনুন')}</button>}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
             e.stopPropagation();
-            receipt({...last.r,method:last.method,paid:last.paid,customer:cname,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg);
+            receipt({...last.r,method:last.method,paid:last.paid,customer:last.customerName||last.r.customer,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg);
           }}>{__("🖨 রসিদ প্রিন্ট")}</button>}</div>}
     <div className="th"><div>{__("পণ্য")}</div><div>{__("পরিমাণ")}</div><div>{__("মোট")}</div></div>
     <div className="rows">{!lines.length && <p className="empty">{__("কার্ট খালি — পণ্য স্ক্যান করুন বা ট্যাপ করুন")}</p>}
@@ -501,8 +515,9 @@ export default function Sell() {
       <div className="qty"><button onClick={() => setQty(l.p, l.qty - 1)}>−</button><input aria-label={__('পরিমাণ')} type="number" min="1" max={l.p.stock} value={qtyDraft[l.p.id] ?? l.qty} onChange={e => setQtyDraft(d => ({...d,[l.p.id]:e.target.value}))} onBlur={() => { if (qtyDraft[l.p.id] !== undefined) { setQty(l.p, Number(qtyDraft[l.p.id]) || l.qty); setQtyDraft(d => { const n={...d}; delete n[l.p.id]; return n; }); } }} /><button onClick={() => setQty(l.p, l.qty + 1)}>＋</button></div><div className="tot">{tk(l.p.price * l.qty)}</div></div>)}</div>
     <table className="sumt"><tbody>
      <tr><td>{__("কাস্টমার: ")}<b>{cname}</b></td><td>{__("সাব-টোটাল")}</td><td className="r">{tk(sub)}</td></tr>
-     <tr><td>{__("কুপন: ")}<b>{applied || '—'}</b>{cd > 0 && ` (−${tk(cd)})`}</td><td><a className="dl" onClick={openDiscount}>{__("ডিসকাউন্ট")}</a></td><td className="r">{tk(disc)}</td></tr>
+     <tr><td>{__("কুপন: ")}<b>{applied || '—'}</b>{cd > 0 && ` (−${tk(cd)})`}</td><td><a className="dl" onClick={openDiscount}>{__("ডিসকাউন্ট")}</a></td><td className="r">{tk(disc + cd)}</td></tr>
      <tr><td>{__("গিফট কার্ড: ")}<b>{gApplied || '—'}</b></td><td>{__("ভ্যাট")}</td><td className="r">{tk(vat)}</td></tr>
+     {redeemPoints>0&&<tr><td>Points redeemed: <b>{redeemPoints}</b></td><td>Reward discount</td><td className="r">{tk(loyaltyDiscount)}</td></tr>}
      <tr><td>Store Credit / Voucher: <b>{creditApplied || voucherApplied || '—'}</b></td><td>Credit Used</td><td className="r">{tk(creditUse)}</td></tr>
      <tr className="gt"><td /><td>{__("মোট")}</td><td className="r">{tk(total)}</td></tr></tbody></table>
    </div>

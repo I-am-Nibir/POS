@@ -54,3 +54,9 @@ The existing Render blueprint is preserved. It configures a Starter service and 
 - The setting is persisted with the existing receipt configuration in SQLite.
 
 Testing note: backend syntax check passed. Frontend production build and physical thermal-printer output have not yet been verified in this environment.
+
+## Loyalty / Reward Points
+- Added admin-configurable reward earning and redemption settings.
+- Added Sell checkout points display and redemption with server-side balance validation.
+- Added atomic point balance updates and an earn/redeem ledger.
+- Receipts preserve the customer attached to the completed sale and display points activity.

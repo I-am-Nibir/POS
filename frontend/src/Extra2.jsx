@@ -327,7 +327,7 @@ export function Reports() {
     try {
       const data = await api(`/sales/${id}/receipt`);
       const s = data.sale;
-      receipt({invoice:s.invoice,created_at:s.created_at,status:s.status,customer:s.customer,cashier:s.cashier,method:s.method,paid:s.paid,change:Math.max(0,Number(s.paid||0)-Number(s.total||0)),due:Math.max(0,Number(s.total||0)-Number(s.paid||0))}, data.lines, s.total, s.vat, s.discount, receiptCfg, printWindow);
+      receipt({invoice:s.invoice,created_at:s.created_at,status:s.status,customer:s.customer,cashier:s.cashier,method:s.method,paid:s.paid,pointsRedeemed:s.points_redeemed||0,pointsEarned:s.points_earned||0,pointsBalance:s.points_balance,change:Math.max(0,Number(s.paid||0)-Number(s.total||0)),due:Math.max(0,Number(s.total||0)-Number(s.paid||0))}, data.lines, s.total, s.vat, s.discount, receiptCfg, printWindow);
     } catch (e) { printWindow.close(); alert(e.message || 'Could not load receipt'); }
     finally { setPrintingId(null); }
   };

@@ -46,7 +46,7 @@ function Form({
 }
 export function Customers() {
   const me=JSON.parse(sessionStorage.getItem('u')||'{}');
-  const [l, setL] = useState([]), [ledger,setLedger]=useState(null), [ledgerCustomer,setLedgerCustomer]=useState(null);
+  const [l, setL] = useState([]), [ledger,setLedger]=useState(null), [ledgerCustomer,setLedgerCustomer]=useState(null), [pointsLedger,setPointsLedger]=useState(null), [pointsCustomer,setPointsCustomer]=useState(null);
   const load = () => api('/customers').then(setL);
   useEffect(() => {
     load();
@@ -62,7 +62,7 @@ export function Customers() {
       load();
     }} />
   <table width="100%"><thead><tr><th align="left">{__("নাম")}</th><th>{__("ফোন")}</th><th>{__("বাকি")}</th><th>{__("পয়েন্ট")}</th><th></th></tr></thead><tbody>
-  {l.map(c => <tr key={c.id}><td>{c.name}</td><td>{c.phone}</td><td>{c.due}</td><td>{c.points}</td><td>{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/credit-ledger`);setLedger(x);setLedgerCustomer(c)}catch(e){alert(e.message)}}}>Credit Ledger</button>}{c.due > 0 && <button onClick={async () => {
+  {l.map(c => <tr key={c.id}><td>{c.name}</td><td>{c.phone}</td><td>{c.due}</td><td>{c.points}</td><td>{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/credit-ledger`);setLedger(x);setLedgerCustomer(c)}catch(e){alert(e.message)}}}>Credit Ledger</button>}{me.role!=='cashier'&&<button onClick={async()=>{try{const x=await api(`/customers/${c.id}/points-ledger`);setPointsLedger(x);setPointsCustomer(c)}catch(e){alert(e.message)}}}>Points Ledger</button>}{c.due > 0 && <button onClick={async () => {
               const a = +prompt(__("কত টাকা পেলেন?"));
               if (a) {
                 try {
@@ -77,7 +77,7 @@ export function Customers() {
                   alert(e.message);
                 }
               }
-            }}>{__("বাকি আদায়")}</button>}</td></tr>)}</tbody></table></div>;
+            }}>{__("বাকি আদায়")}</button>}</td></tr>)}</tbody></table>{pointsLedger&&<div style={box}><div style={{display:'flex',justifyContent:'space-between'}}><b>Reward points ledger · {pointsCustomer?.name}</b><button onClick={()=>setPointsLedger(null)}>Close</button></div><p>Current balance: {pointsLedger.balance} points</p><table width="100%"><thead><tr><th>When</th><th>Type</th><th>Points</th><th>Balance after</th><th>Description</th></tr></thead><tbody>{pointsLedger.entries.map(x=><tr key={x.id}><td>{x.created_at}</td><td>{x.kind}</td><td>{['redeem','exchange_reverse'].includes(x.kind)?'-':''}{x.points}</td><td>{x.balance_after}</td><td>{x.description}</td></tr>)}</tbody></table></div>}</div>;
 }
 export function Stock() {
   const [sup, setSup] = useState([]);
