@@ -21,3 +21,13 @@ Note: ESC/POS receipt-e Bangla akkhor print hoy na; Bangla nam hole SKU print ho
 - Offline-e coupon/gift card, notun customer/product kaj kore na. Offline-e tab/browser bondho korben na (login session harabe).
 - Service worker (app offline-e khola) er jonno HTTPS ba localhost lagbe. LAN IP-te http hole SW chalu hobe na.
 - Sync fail hole (jemon product delete hoyeche) browser-er localStorage 'failed' list-e thake.
+
+
+## POS updates
+- Cashier manual discount is limited to 10% of the subtotal; the backend checks the combined manual + coupon discount as well. Manager/admin accounts are not subject to the cashier limit.
+- Sell screen supports Taka and percentage discount entry, void confirmation with undo, editable cart quantities, held-bill details, receipt reprint, customer name/phone search, and per-item VAT labels.
+- Admin/manager users can add, hide/show, and delete tagged demo data from the bottom of the Dashboard. Demo records include 50 products, 100 customers, 5 suppliers, sample sales, expenses, two coupons, and a gift card.
+- Demo rows are marked with `is_demo`; hiding them excludes them from product/customer/supplier/sales/expense lists and reporting queries without deleting real data.
+
+## Render persistence
+The included `render.yaml` configures a Starter web service with a 1 GB persistent disk mounted at `/var/data`, and sets `DB_FILE=/var/data/pos.db`. Keep that disk attached to preserve SQLite data across deploys. The blueprint also generates `JWT_SECRET`; do not remove it. The persistent disk is a paid Render feature, not part of the free ephemeral filesystem.

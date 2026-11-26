@@ -11,6 +11,30 @@ const MN = {
   nagad: __("নগদ"),
   due: __("বাকি")
 };
+function DemoData() {
+  const [st, setSt] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const load = () => api('/demo/status').then(setSt).catch(e => setError(e.message));
+  useEffect(() => { load(); }, []);
+  const run = async (path, options) => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await api(path, options); location.reload(); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+  if (error && !st) return <div className="card"><h4>{__('ডেমো ডেটা')}</h4><p style={{color:'#ef4444'}}>{error}</p></div>;
+  if (!st) return <div className="card"><h4>{__('ডেমো ডেটা')}</h4><p>{__('লোড হচ্ছে...')}</p></div>;
+  return <div className="card demo-card"><h4>{__('ডেমো ডেটা')} · {st.hidden ? __('লুকানো') : __('দেখানো হচ্ছে')}</h4>
+    <p className="mut">{__('পরীক্ষার জন্য ৫০টি পণ্য, ১০০ জন কাস্টমার, ৫টি সাপ্লায়ার, বিক্রি ও খরচের নমুনা ডেটা।')}</p>
+    <div className="demo-actions">
+      <button disabled={busy || st.seeded} onClick={() => run('/demo/seed',{method:'POST'})}>{__('ডেমো ডেটা যোগ করুন')}</button>
+      {st.seeded && <button disabled={busy} onClick={() => run('/demo/visibility',{method:'PUT',body:{hide:!st.hidden}})}>{st.hidden ? __('ডেমো ডেটা দেখান') : __('ডেমো ডেটা লুকান')}</button>}
+      {st.seeded && <button disabled={busy} className="demo-delete" onClick={() => { if(confirm(__('সব ডেমো ডেটা মুছে ফেলবেন?'))) run('/demo/clear',{method:'POST'}); }}>{__('ডেমো ডেটা মুছুন')}</button>}
+    </div>
+    {error && <p style={{color:'#ef4444'}}>{error}</p>}
+    {st.seeded && <p className="mut demo-counts">{__('পণ্য')}: {st.counts.products} · {__('কাস্টমার')}: {st.counts.customers} · {__('বিক্রি')}: {st.counts.sales} · {__('সাপ্লায়ার')}: {st.counts.suppliers} · {__('খরচ')}: {st.counts.expenses}</p>}
+  </div>;
+}
 export default function Dash() {
   const [d, setD] = useState();
   const [e, setE] = useState('');
@@ -69,5 +93,5 @@ export default function Dash() {
           }}>{p.stock}</b></div>)}</div>
    <div className="card"><h4>{__("সাম্প্রতিক বিক্রি")}</h4>{!d.sales.length && <p className="mut">{__("তথ্য নেই")}</p>}{d.sales.slice(0, 8).map(s => <div key={s.id} className="li"><span>{s.invoice}<br /><small className="mut">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleString('en-GB')} · {MN[s.method] || s.method}</small></span><b style={{
             textDecoration: s.status === 'refunded' ? 'line-through' : 'none'
-          }}>{tk(s.total)}</b></div>)}</div></div></div>;
+          }}>{tk(s.total)}</b></div>)}</div></div><DemoData /></div>;
 }

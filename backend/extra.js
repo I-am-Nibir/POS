@@ -9,14 +9,14 @@ module.exports=({app,db,auth,wrap,parse,err,log,z})=>{
  create table if not exists return_items(id integer primary key,sale_id integer,product_id integer,qty integer,amount real,created_at text default(datetime('now')));`);
  const M=auth('admin','manager'),r2=n=>Math.round(n*100)/100;
  // Customers
- app.get('/api/customers',auth(),wrap(()=>db.prepare('select * from customers order by name').all()));
+ app.get('/api/customers',auth(),wrap(()=>db.prepare('select * from customers where (is_demo=0 or ?) order by name').all(app.locals.demoOn()?1:0)));
  app.post('/api/customers',auth(),wrap(req=>{const d=parse(z.object({name:z.string().min(1).max(100),phone:z.string().max(20).optional()}),req.body);
   try{const r=db.prepare('insert into customers(name,phone) values(?,?)').run(d.name,d.phone||null);log(req.user.id,'customer_create',d);return{id:r.lastInsertRowid}}catch{throw err(409,'This phone number already exists')}}));
  app.post('/api/customers/:id/pay',auth(),wrap(req=>{const d=parse(z.object({amount:z.number().positive()}),req.body);
   const c=db.prepare('select * from customers where id=?').get(+req.params.id);if(!c)throw err(404,'Customer not found');if(d.amount>c.due)throw err(400,'Amount is more than the due balance');
   db.prepare('update customers set due=due-? where id=?').run(d.amount,c.id);log(req.user.id,'due_payment',{id:c.id,...d});return{ok:1}}));
  // Suppliers + purchases (GRN)
- app.get('/api/suppliers',M,wrap(()=>db.prepare('select * from suppliers order by name').all()));
+ app.get('/api/suppliers',M,wrap(()=>db.prepare('select * from suppliers where (is_demo=0 or ?) order by name').all(app.locals.demoOn()?1:0)));
  app.post('/api/suppliers',M,wrap(req=>{const d=parse(z.object({name:z.string().min(1).max(100),phone:z.string().max(20).optional()}),req.body);
   return{id:db.prepare('insert into suppliers(name,phone) values(?,?)').run(d.name,d.phone||null).lastInsertRowid}}));
  app.post('/api/purchases',M,wrap(req=>{const d=parse(z.object({supplierId:z.number().int(),paid:z.number().min(0),items:z.array(z.object({id:z.number().int(),qty:z.number().int().positive(),cost:z.number().min(0)})).min(1)}),req.body);
@@ -56,14 +56,14 @@ module.exports=({app,db,auth,wrap,parse,err,log,z})=>{
  const today=()=>db.prepare("select date('now',?) d").get(TZ).d;
  app.post('/api/expenses',M,wrap(req=>{const d=parse(z.object({title:z.string().min(1).max(100),amount:z.number().positive(),category:z.string().max(40).default('Other'),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()}),req.body);
   db.prepare('insert into expenses(title,amount,user_id,category,exp_date) values(?,?,?,?,?)').run(d.title,d.amount,req.user.id,d.category,d.date||today());log(req.user.id,'expense',d);return{ok:1}}));
- app.get('/api/expenses',M,wrap(req=>db.prepare('select id,title,amount,category,coalesce(exp_date,date(created_at)) date from expenses where coalesce(exp_date,date(created_at)) between ? and ? order by date desc,id desc limit 500').all(String(req.query.from||'1970-01-01'),String(req.query.to||'2999-12-31'))));
+ app.get('/api/expenses',M,wrap(req=>db.prepare('select id,title,amount,category,coalesce(exp_date,date(created_at)) date from expenses where coalesce(exp_date,date(created_at)) between ? and ? and (is_demo=0 or ?) order by date desc,id desc limit 500').all(String(req.query.from||'1970-01-01'),String(req.query.to||'2999-12-31'),app.locals.demoOn()?1:0)));
  app.delete('/api/expenses/:id',auth('admin'),wrap(req=>{const e=db.prepare('select * from expenses where id=?').get(+req.params.id);if(!e)throw err(404,'Not found');
   db.prepare('delete from expenses where id=?').run(e.id);log(req.user.id,'expense_delete',e);return{ok:1}}));
  app.get('/api/reports/series',M,wrap(req=>{const f=String(req.query.from||'1970-01-01'),t=String(req.query.to||'2999-12-31'),fmt=req.query.group==='month'?'%Y-%m':'%Y-%m-%d';
   const R={},add=(rows,k)=>rows.forEach(x=>{R[x.p]=R[x.p]||{period:x.p,revenue:0,returns:0,cogs:0,expenses:0};R[x.p][k]=r2(x.v)});
-  add(db.prepare(`select strftime('${fmt}',created_at,@z) p,sum(total) v from sales where status='completed' and date(created_at,@z) between @f and @t group by p`).all({z:TZ,f,t}),'revenue');
-  add(db.prepare(`select strftime('${fmt}',created_at,@z) p,sum(amount) v from return_items where date(created_at,@z) between @f and @t group by p`).all({z:TZ,f,t}),'returns');
-  add(db.prepare(`select strftime('${fmt}',s.created_at,@z) p,sum(si.qty*pr.cost) v from sale_items si join sales s on s.id=si.sale_id join products pr on pr.id=si.product_id where s.status='completed' and date(s.created_at,@z) between @f and @t group by p`).all({z:TZ,f,t}),'cogs');
-  add(db.prepare(`select strftime('${fmt}',coalesce(exp_date,date(created_at))) p,sum(amount) v from expenses where coalesce(exp_date,date(created_at)) between @f and @t group by p`).all({f,t}),'expenses');
+  add(db.prepare(`select strftime('${fmt}',created_at,@z) p,sum(total) v from sales where status='completed' and date(created_at,@z) between @f and @t and (is_demo=0 or @d) group by p`).all({z:TZ,f,t,d:app.locals.demoOn()?1:0}),'revenue');
+  add(db.prepare(`select strftime('${fmt}',ri.created_at,@z) p,sum(ri.amount) v from return_items ri where date(ri.created_at,@z) between @f and @t and (ri.sale_id not in(select id from sales where is_demo=1) or @d) group by p`).all({z:TZ,f,t,d:app.locals.demoOn()?1:0}),'returns');
+  add(db.prepare(`select strftime('${fmt}',s.created_at,@z) p,sum(si.qty*pr.cost) v from sale_items si join sales s on s.id=si.sale_id join products pr on pr.id=si.product_id where s.status='completed' and date(s.created_at,@z) between @f and @t and (s.is_demo=0 or @d) group by p`).all({z:TZ,f,t,d:app.locals.demoOn()?1:0}),'cogs');
+  add(db.prepare(`select strftime('${fmt}',coalesce(exp_date,date(created_at))) p,sum(amount) v from expenses where coalesce(exp_date,date(created_at)) between @f and @t and (is_demo=0 or @d) group by p`).all({f,t,d:app.locals.demoOn()?1:0}),'expenses');
   return Object.values(R).sort((a,b)=>a.period<b.period?-1:1).map(x=>({...x,profit:r2(x.revenue-x.returns-x.cogs-x.expenses)}))}));
 };

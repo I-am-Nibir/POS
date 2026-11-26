@@ -25,6 +25,8 @@ const M = {
   due: __("বাকি")
 };
 export default function Sell() {
+  const user = JSON.parse(sessionStorage.getItem('u') || '{}');
+  const isCashier = user.role === 'cashier';
   const [items, setItems] = useState([]),
     [q, setQ] = useState(''),
     [cat, setCat] = useState(''),
@@ -32,6 +34,10 @@ export default function Sell() {
     [cs, setCs] = useState([]),
     [cust, setCust] = useState('');
   const [disc, setDisc] = useState(0),
+    [discMode, setDiscMode] = useState('amt'),
+    [discIn, setDiscIn] = useState(''),
+    [cq, setCq] = useState(''),
+    [qtyDraft, setQtyDraft] = useState({}),
     [code, setCode] = useState(''),
     [applied, setApplied] = useState(''),
     [cd, setCd] = useState(0),
@@ -113,6 +119,8 @@ export default function Sell() {
   const sub = lines.reduce((a, l) => a + l.p.price * l.qty, 0),
     base = Math.max(0, sub - disc - cd),
     f = sub ? base / sub : 0;
+  const capDisc = () => isCashier ? sub * 0.10 : sub;
+  const manualCap = Math.max(0, capDisc() - cd);
   const vat = lines.reduce((a, l) => a + r2(l.p.price * l.qty * l.p.vat_rate / 100 * f), 0),
     total = r2(base + vat),
     giftUse = Math.min(gift, total),
@@ -120,6 +128,9 @@ export default function Sell() {
   const given = tender === '' ? due : +tender,
     change = Math.max(0, r2(given - due)),
     short = method !== 'due' && method === 'cash' && given < due;
+  useEffect(() => {
+    if (disc > manualCap + 0.001) setDisc(r2(manualCap));
+  }, [manualCap, disc]);
   useEffect(() => {
     if (!applied) return;
     if (sub <= 0) {
@@ -178,7 +189,9 @@ export default function Sell() {
     setPayOpen(false);
     setDiscOpen(false);
     setCart({});
+    setQtyDraft({});
     setDisc(0);
+    setDiscIn('');
     setCode('');
     setApplied('');
     setCd(0);
@@ -195,9 +208,8 @@ export default function Sell() {
   const hold = () => {
     if (!lines.length) return;
     const h = [...held, {
-      cart,
-      cust,
-      t: Date.now()
+      cart, cust, t: Date.now(), n: lines.length, total, disc, applied, cd, code, gcode, gApplied, gift, tender, method,
+      customerName: cs.find(c => String(c.id) === String(cust))?.name || __('খুচরা ক্রেতা')
     }];
     localStorage.setItem('held', JSON.stringify(h));
     setHeld(h);
@@ -206,10 +218,41 @@ export default function Sell() {
       t: __("বিল হোল্ড হয়েছে (F6 দিয়ে ফিরিয়ে আনুন)")
     });
   };
+  const voidBill = () => {
+    if (!lines.length) return;
+    if (!confirm(__('বিল বাতিল করবেন? কার্টের সব আইটেম মুছে যাবে।'))) return;
+    const snapshot = { cart, cust, disc, applied, cd, code, gcode, gApplied, gift, tender, method };
+    clear();
+    setMsg({ t: __('বিল বাতিল হয়েছে'), undo: snapshot });
+  };
+  const undoVoid = snapshot => {
+    setCart(snapshot.cart || {}); setCust(snapshot.cust || ''); setDisc(snapshot.disc || 0);
+    setApplied(snapshot.applied || ''); setCd(snapshot.cd || 0); setCode(snapshot.code || '');
+    setGcode(snapshot.gcode || ''); setGApplied(snapshot.gApplied || ''); setGift(snapshot.gift || 0);
+    setTender(snapshot.tender || ''); setMethod(snapshot.method || 'cash'); setDiscIn(String(snapshot.disc || ''));
+    setMsg(null); focus();
+  };
+  const openDiscount = () => { setDiscMode('amt'); setDiscIn(String(disc || '')); setDiscOpen(true); };
+  const updateDiscount = value => {
+    const n = Math.max(0, Number(value) || 0);
+    if (discMode === 'pct') {
+      if (value === '') { setDisc(0); setDiscIn(''); return; }
+      const roleMax = isCashier ? 10 : 100;
+      const maxPct = sub ? Math.min(roleMax, manualCap / sub * 100) : 0;
+      const pct = maxPct < 1 ? 0 : Math.max(1, Math.min(maxPct, n));
+      setDisc(r2(Math.min(manualCap, sub * pct / 100)));
+      setDiscIn(String(pct));
+    } else {
+      const amount = Math.min(manualCap, n);
+      setDisc(r2(amount)); setDiscIn(String(amount));
+    }
+  };
   const recall = i => {
     const h = held[i];
     setCart(h.cart);
-    setCust(h.cust);
+    setCust(h.cust); setDisc(h.disc || 0); setApplied(h.applied || ''); setCd(h.cd || 0);
+    setCode(h.code || ''); setGcode(h.gcode || ''); setGApplied(h.gApplied || ''); setGift(h.gift || 0);
+    setTender(h.tender || ''); setMethod(h.method || 'cash');
     const r = held.filter((_, k) => k !== i);
     localStorage.setItem('held', JSON.stringify(r));
     setHeld(r);
@@ -226,13 +269,14 @@ export default function Sell() {
       t: __("ক্রেতার দেওয়া টাকা কম"),
       err: 1
     });
+    const dFinal = Math.max(0, Math.min(+disc || 0, manualCap));
     const paid = method === 'due' ? tender === '' ? 0 : +tender : method === 'cash' ? given : due;
     const body = {
       items: lines.map(l => ({
         id: l.p.id,
         qty: l.qty
       })),
-      discount: +disc || 0,
+      discount: dFinal,
       method,
       paid,
       key,
@@ -244,7 +288,7 @@ export default function Sell() {
       lines,
       total,
       vat,
-      disc: (+disc || 0) + cd,
+      disc: dFinal + cd,
       paid,
       method
     };
@@ -411,6 +455,7 @@ export default function Sell() {
     }
   };
   const cname = cs.find(c => String(c.id) === String(cust))?.name || __("খুচরা ক্রেতা");
+  const customerOptions = cs.filter(c => !cq || `${c.name} ${c.phone || ''}`.toLowerCase().includes(cq.toLowerCase()));
   return <div className={'nx' + (light ? ' light' : '')}>
   <section className="cartp">
    <div className="tabs"><div className="tab">{__("কার্ট")}{lines.length > 0 && <span className="badge">{lines.length}</span>}</div><span style={{
@@ -418,23 +463,23 @@ export default function Sell() {
         }} />
     <span className={'net ' + (net ? 'on' : 'off')}>{net ? __("● অনলাইন") : __("● অফলাইন")}</span>{pend > 0 && <button className="tb" onClick={sync}>{__("⟳ সিঙ্ক (")}{pend})</button>}</div>
    <div className="cartbox">
-    <div className="toolbox"><select value={cust} onChange={e => setCust(e.target.value)}><option value="">{__("খুচরা ক্রেতা")}</option>{cs.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
-     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button><button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
-    {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
+    <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setCq(''); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
+     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt(last.r, last.lines, last.total, last.vat, last.disc)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
+    {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.undo && <button onClick={e => { e.stopPropagation(); undoVoid(msg.undo); }}>{__('ফিরিয়ে আনুন')}</button>}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
             e.stopPropagation();
             receipt(last.r, last.lines, last.total, last.vat, last.disc);
           }}>{__("🖨 রসিদ প্রিন্ট")}</button>}</div>}
     <div className="th"><div>{__("পণ্য")}</div><div>{__("পরিমাণ")}</div><div>{__("মোট")}</div></div>
     <div className="rows">{!lines.length && <p className="empty">{__("কার্ট খালি — পণ্য স্ক্যান করুন বা ট্যাপ করুন")}</p>}
-     {lines.map(l => <div key={l.p.id} className="row"><div><b>{l.p.name}</b> <small>{l.p.size} {l.p.color}</small><div className="lnk"><a className="rm" onClick={() => setQty(l.p, 0)}>{__("মুছুন")}</a><span>{tk(l.p.price)}</span></div></div>
-      <div className="qty"><button onClick={() => setQty(l.p, l.qty - 1)}>−</button><b>{l.qty}</b><button onClick={() => setQty(l.p, l.qty + 1)}>＋</button></div><div className="tot">{tk(l.p.price * l.qty)}</div></div>)}</div>
+     {lines.map(l => <div key={l.p.id} className="row"><div><b>{l.p.name}</b> <small>{l.p.size} {l.p.color} · VAT {Number(l.p.vat_rate || 0)}%</small><div className="lnk"><a className="rm" onClick={() => setQty(l.p, 0)}>{__("মুছুন")}</a><span>{tk(l.p.price)}</span></div></div>
+      <div className="qty"><button onClick={() => setQty(l.p, l.qty - 1)}>−</button><input aria-label={__('পরিমাণ')} type="number" min="1" max={l.p.stock} value={qtyDraft[l.p.id] ?? l.qty} onChange={e => setQtyDraft(d => ({...d,[l.p.id]:e.target.value}))} onBlur={() => { if (qtyDraft[l.p.id] !== undefined) { setQty(l.p, Number(qtyDraft[l.p.id]) || l.qty); setQtyDraft(d => { const n={...d}; delete n[l.p.id]; return n; }); } }} /><button onClick={() => setQty(l.p, l.qty + 1)}>＋</button></div><div className="tot">{tk(l.p.price * l.qty)}</div></div>)}</div>
     <table className="sumt"><tbody>
      <tr><td>{__("কাস্টমার: ")}<b>{cname}</b></td><td>{__("সাব-টোটাল")}</td><td className="r">{tk(sub)}</td></tr>
-     <tr><td>{__("কুপন: ")}<b>{applied || '—'}</b>{cd > 0 && ` (−${tk(cd)})`}</td><td><a className="dl" onClick={() => setDiscOpen(true)}>{__("ডিসকাউন্ট")}</a></td><td className="r">{tk(disc)}</td></tr>
+     <tr><td>{__("কুপন: ")}<b>{applied || '—'}</b>{cd > 0 && ` (−${tk(cd)})`}</td><td><a className="dl" onClick={openDiscount}>{__("ডিসকাউন্ট")}</a></td><td className="r">{tk(disc)}</td></tr>
      <tr><td>{__("গিফট কার্ড: ")}<b>{gApplied || '—'}</b></td><td>{__("ভ্যাট")}</td><td className="r">{tk(vat)}</td></tr>
      <tr className="gt"><td /><td>{__("মোট")}</td><td className="r">{tk(total)}</td></tr></tbody></table>
    </div>
-   <div className="bottom"><button className="b-pay" title="F9" disabled={!lines.length} onClick={() => setPayOpen(true)}><Banknote size={20} /><span>{__("পেমেন্ট করুন")}</span></button><button className="b-hold" title="F4" disabled={!lines.length} onClick={hold}><Pause size={20} /><span>{__("হোল্ড")}</span></button><button className="b-disc" disabled={!lines.length} onClick={() => setDiscOpen(true)}><Percent size={20} /><span>{__("ডিসকাউন্ট")}</span></button><button className="b-void" disabled={!lines.length} onClick={clear}><Trash2 size={20} /><span>{__("বিল বাতিল")}</span></button></div>
+   <div className="bottom"><button className="b-pay" title="F9" disabled={!lines.length} onClick={() => setPayOpen(true)}><Banknote size={20} /><span>{__("পেমেন্ট করুন")}</span></button><button className="b-hold" title="F4" disabled={!lines.length} onClick={hold}><Pause size={20} /><span>{__("হোল্ড")}</span></button><button className="b-disc" disabled={!lines.length} onClick={openDiscount}><Percent size={20} /><span>{__("ডিসকাউন্ট")}</span></button><button className="b-void" disabled={!lines.length} onClick={voidBill}><Trash2 size={20} /><span>{__("বিল বাতিল")}</span></button></div>
   </section>
   <section className="gridp"><div className="gtool"><span className="ic"><Search size={16} /></span><span className="ic">▮▯▮</span>
     <input ref={sr} className="scan" placeholder={__("বার্কোড স্ক্যান করুন বা নাম/SKU লিখে Enter (F2)")} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => {
@@ -485,20 +530,20 @@ export default function Sell() {
       {method === 'cash' && given >= due && due > 0 && <div className="chg">{__("ফেরত টাকা: ")}{tk(change)}</div>}</>}
      {msg?.err && <div className="msg err">{msg.t}</div>}</div></div>
    <div className="df"><button onClick={() => setPayOpen(false)}>{__("বন্ধ")}</button><button className="b-pay" disabled={busy || !lines.length} onClick={pay}>{busy ? '...' : __("নিশ্চিত করুন — {0}", [tk(due)])}</button></div></div></div>}
-  {discOpen && <div className="mdl" onClick={() => setDiscOpen(false)}><div className="dlg" style={{
-        maxWidth: 340
-      }} onClick={e => e.stopPropagation()}><div className="dh"><b>{__("ডিসকাউন্ট (৳)")}</b><button onClick={() => setDiscOpen(false)}><X size={16} /></button></div>
-   <div className="pb" style={{
-          display: 'block'
-        }}><input className="amt" type="number" min="0" autoFocus value={disc || ''} onChange={e => setDisc(+e.target.value || 0)} /><p style={{
-            opacity: .7,
-            fontSize: 12
-          }}>{__("ক্যাশিয়ার সর্বোচ্চ ১০% দিতে পারে।")}</p></div><div className="df"><button className="b-pay" onClick={() => setDiscOpen(false)}>{__("ঠিক আছে")}</button></div></div></div>}
+  {discOpen && <div className="mdl" onClick={() => setDiscOpen(false)}><div className="dlg" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+   <div className="dh"><b>{__('ডিসকাউন্ট')}</b><button onClick={() => setDiscOpen(false)}><X size={16} /></button></div>
+   <div className="pb" style={{ display: 'block' }}>
+    <div className="pm"><button className={discMode === 'amt' ? 'on' : ''} onClick={() => { setDiscMode('amt'); setDiscIn(String(disc || '')); }}>{__('টাকা (৳)')}</button><button className={discMode === 'pct' ? 'on' : ''} onClick={() => { setDiscMode('pct'); setDiscIn(sub ? String(r2(disc / sub * 100)) : ''); }}>{__('শতাংশ (%)')}</button></div>
+    <input className="amt" type="number" min={discMode === 'pct' ? 1 : 0} max={discMode === 'pct' ? (isCashier ? 10 : 100) : manualCap} step="0.01" autoFocus value={discIn} onChange={e => updateDiscount(e.target.value)} />
+    <div className="qk">{(discMode === 'pct' ? [5, 10] : [50, 100, 200]).map(v => <button key={v} onClick={() => updateDiscount(v)}>{discMode === 'pct' ? `${v}%` : tk(v)}</button>)}</div>
+    <p>{__('বর্তমান ডিসকাউন্ট')}: <b>{tk(disc + cd)}</b> ({sub ? r2((disc + cd) / sub * 100) : 0}%)</p>
+    <p style={{ opacity: .7, fontSize: 12 }}>{isCashier ? __('ক্যাশিয়ার সর্বোচ্চ ১০% ডিসকাউন্ট দিতে পারবেন।') : __('ম্যানেজার/অ্যাডমিন সর্বোচ্চ ১০০% পর্যন্ত ডিসকাউন্ট দিতে পারবেন।')}</p>
+   </div><div className="df"><button onClick={() => setDiscOpen(false)}>{__('বন্ধ')}</button><button className="b-pay" onClick={() => setDiscOpen(false)}>{__('ঠিক আছে')}</button></div></div></div>}
   {showHeld && <div className="mdl" onClick={() => setShowHeld(false)}><div className="dlg" style={{
         maxWidth: 340
       }} onClick={e => e.stopPropagation()}><div className="dh"><b>{__("হোল্ড করা বিল")}</b><button onClick={() => setShowHeld(false)}><X size={16} /></button></div><div className="pb" style={{
           display: 'grid',
           gap: 6
-        }}>{!held.length && <p>{__("কোনো হোল্ড বিল নেই")}</p>}{held.map((h, i) => <button key={i} onClick={() => recall(i)}>{new Date(h.t).toLocaleTimeString()} — {Object.keys(h.cart).length}{__(" আইটেম")}</button>)}</div></div></div>}
+        }}>{!held.length && <p>{__("কোনো হোল্ড বিল নেই")}</p>}{held.map((h, i) => <button key={i} className="held-item" onClick={() => recall(i)}><b>{h.customerName || cs.find(c => String(c.id) === String(h.cust))?.name || __("খুচরা ক্রেতা")}</b><span>{new Date(h.t).toLocaleTimeString()} · {h.n || Object.keys(h.cart).length}{__(" আইটেম")} · {tk(h.total || 0)}</span></button>)}</div></div></div>}
  </div>;
 }

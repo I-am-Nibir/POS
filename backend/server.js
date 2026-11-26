@@ -37,7 +37,7 @@ app.post('/api/setup',rateLimit({windowMs:15*60e3,max:10,standardHeaders:true}),
  return db.transaction(()=>{if(db.prepare('select 1 from users').get())throw err(409,'Setup has already been completed');
   const id=db.prepare('insert into users(username,pass_hash,role) values(?,?,?)').run(d.username,bcrypt.hashSync(d.password,12),'admin').lastInsertRowid;
   log(id,'setup',{u:d.username});return{token:jwt.sign({id},SECRET,{expiresIn:'8h'}),user:{id,username:d.username,role:'admin'}}})()}));
-app.get('/api/products',auth(),wrap(()=>db.prepare('select id,name,sku,barcode,price,stock,low_stock,vat_rate,size,color,category,brand from products where active=1 order by name').all()));
+app.get('/api/products',auth(),wrap(()=>db.prepare('select id,name,sku,barcode,price,stock,low_stock,vat_rate,size,color,category,brand from products where active=1 and (is_demo=0 or ?) order by name').all(app.locals.demoOn()?1:0)));
 const P=z.object({name:z.string().min(1).max(120),sku:z.string().min(1).max(40),barcode:z.string().max(40).optional(),price:z.number().min(0),cost:z.number().min(0).default(0),stock:z.number().int().min(0).default(0),low_stock:z.number().int().min(0).default(5),vat_rate:z.number().min(0).max(100).default(0),size:z.string().max(20).optional(),color:z.string().max(20).optional(),category:z.string().max(40).optional(),brand:z.string().max(40).optional()});
 app.post('/api/products',auth('admin','manager'),wrap(req=>{const d=parse(P,req.body);
  try{const r=db.prepare('insert into products(name,sku,barcode,price,cost,stock,low_stock,vat_rate,size,color,category,brand) values(@name,@sku,@barcode,@price,@cost,@stock,@low_stock,@vat_rate,@size,@color,@category,@brand)').run({barcode:null,size:null,color:null,category:null,brand:null,...d});
@@ -51,19 +51,20 @@ app.post('/api/sales',auth(),wrap(req=>{
  const d=parse(z.object({items:z.array(z.object({id:z.number().int(),qty:z.number().int().positive().max(10000)})).min(1).max(200),discount:z.number().min(0).default(0),method:z.enum(['cash','card','bkash','nagad','due']),customerId:z.number().int().optional(),at:z.string().datetime().optional(),coupon:z.string().max(30).optional(),gift:z.string().max(30).optional(),paid:z.number().min(0),customer:z.string().max(100).optional(),key:z.string().min(8).max(64)}),req.body);
  const dup=db.prepare('select id,invoice from sales where idem_key=?').get(d.key);if(dup)return{...dup,duplicate:true};
  return db.transaction(()=>{let sub=0,vat=0;const lines=[];
-  for(const it of d.items){const p=db.prepare('select * from products where id=? and active=1').get(it.id);
+  for(const it of d.items){const p=db.prepare('select * from products where id=? and active=1 and (is_demo=0 or ?)').get(it.id,app.locals.demoOn()?1:0);
    if(!p)throw err(400,'Product not found');if(p.stock<it.qty&&!d.at)throw err(409,`Not enough stock: ${p.name}`);
    const line=p.price*it.qty;sub+=line;lines.push({p,qty:it.qty,vat:line*p.vat_rate/100});}
   if(d.discount>sub)throw err(400,'Discount is more than the subtotal');
-  if(req.user.role==='cashier'&&d.discount>sub*0.1)throw err(403,'Cashiers cannot give more than 10% discount');
-  if(d.coupon)d.discount=r2(d.discount+app.locals.coupon(d.coupon,sub-d.discount));const f=sub?(sub-d.discount)/sub:0;lines.forEach(l=>{l.vat=r2(l.vat*f);vat+=l.vat});
+  if(d.coupon)d.discount=r2(d.discount+app.locals.coupon(d.coupon,sub-d.discount));
+  if(d.discount>sub)throw err(400,'Combined discount is more than the subtotal');
+  if(req.user.role==='cashier'&&d.discount>sub*0.1+0.000001)throw err(403,'Cashier discount cannot exceed 10%');const f=sub?(sub-d.discount)/sub:0;lines.forEach(l=>{l.vat=r2(l.vat*f);vat+=l.vat});
   const total=r2(sub-d.discount+vat);const gift=d.gift?app.locals.gift(d.gift,total):0;if(d.method==='due'){if(!d.customerId)throw err(400,'Select a customer for a due sale')}else if(d.paid+gift<total)throw err(400,'Amount received is less than the total');
   const paidNow=Math.min(d.paid+gift,total);
   const inv='INV-'+Date.now().toString(36).toUpperCase()+crypto.randomInt(100,999);
   const s=db.prepare('insert into sales(invoice,user_id,subtotal,discount,vat,total,paid,method,customer,idem_key) values(?,?,?,?,?,?,?,?,?,?)').run(inv,req.user.id,r2(sub),d.discount,r2(vat),total,d.paid,d.method,d.customer||null,d.key);
   for(const l of lines){db.prepare('insert into sale_items(sale_id,product_id,name,qty,price,vat) values(?,?,?,?,?,?)').run(s.lastInsertRowid,l.p.id,l.p.name,l.qty,l.p.price,l.vat);
    db.prepare('update products set stock=stock-? where id=?').run(l.qty,l.p.id);}
-  if(d.customerId){if(!db.prepare('select 1 from customers where id=?').get(d.customerId))throw err(400,'Customer not found');
+  if(d.customerId){if(!db.prepare('select 1 from customers where id=? and (is_demo=0 or ?)').get(d.customerId,app.locals.demoOn()?1:0))throw err(400,'Customer not found');
   db.prepare('update customers set due=due+?,points=points+? where id=?').run(r2(total-paidNow),Math.floor(total/100),d.customerId);db.prepare('update sales set customer_id=? where id=?').run(d.customerId,s.lastInsertRowid)}
   if(d.at){const t=Date.parse(d.at),n=Date.now();if(!(t<=n+6e4&&t>n-7*864e5))throw err(400,'Invalid offline sale time');db.prepare('update sales set created_at=? where id=?').run(new Date(t).toISOString().slice(0,19).replace('T',' '),s.lastInsertRowid)}
   log(req.user.id,d.at?'sale_offline':'sale',{inv,total});return{id:s.lastInsertRowid,invoice:inv,total,change:Math.max(0,r2(d.paid+gift-total)),gift,due:r2(total-paidNow)}})();}));
@@ -74,11 +75,11 @@ app.post('/api/sales/:id/refund',auth('admin','manager'),wrap(req=>{const id=+re
   for(const i of db.prepare('select * from sale_items where sale_id=?').all(id))db.prepare('update products set stock=stock+? where id=?').run(i.qty,i.product_id);
   db.prepare("update sales set status='refunded' where id=?").run(id);log(req.user.id,'refund',{id,total:s.total});return{ok:1}})()}));
 
-app.get('/api/sales',auth('admin','manager'),wrap(()=>db.prepare('select id,invoice,total,method,status,created_at from sales order by id desc limit 100').all()));
-app.get('/api/reports/daily',auth('admin','manager'),wrap(()=>({
- summary:db.prepare("select count(*) orders,coalesce(sum(total),0) revenue,coalesce(sum(vat),0) vat from sales where status='completed' and date(created_at)=date('now')").get(),
- top:db.prepare("select si.name,sum(si.qty) qty from sale_items si join sales s on s.id=si.sale_id where s.status='completed' and date(s.created_at)=date('now') group by si.name order by qty desc limit 5").all(),
- lowStock:db.prepare('select name,stock from products where stock<=low_stock and active=1').all()})));
+app.get('/api/sales',auth('admin','manager'),wrap(()=>db.prepare('select id,invoice,total,method,status,created_at from sales where (is_demo=0 or ?) order by id desc limit 100').all(app.locals.demoOn()?1:0)));
+app.get('/api/reports/daily',auth('admin','manager'),wrap(()=>{const d=app.locals.demoOn()?1:0;return{
+ summary:db.prepare("select count(*) orders,coalesce(sum(total),0) revenue,coalesce(sum(vat),0) vat from sales where status='completed' and (is_demo=0 or ?) and date(created_at)=date('now')").get(d),
+ top:db.prepare("select si.name,sum(si.qty) qty from sale_items si join sales s on s.id=si.sale_id where s.status='completed' and (s.is_demo=0 or ?) and date(s.created_at)=date('now') group by si.name order by qty desc limit 5").all(d),
+ lowStock:db.prepare('select name,stock from products where stock<=low_stock and active=1 and (is_demo=0 or ?)').all(d)}}));
 
 app.post('/api/shifts/open',auth(),wrap(req=>{if(db.prepare('select 1 from shifts where user_id=? and closed_at is null').get(req.user.id))throw err(409,'A shift is already open');
  const d=parse(z.object({opening:z.number().min(0)}),req.body);db.prepare('insert into shifts(user_id,opening) values(?,?)').run(req.user.id,d.opening);return{ok:1}}));
@@ -95,6 +96,7 @@ app.get('/api/audit',auth('admin'),wrap(()=>db.prepare('select * from audit orde
 require('./extra')({app,db,auth,wrap,parse,err,log,z});
 require('./extra2')({app,db,auth,wrap,parse,err,log,z});
 require('./extra3')({app,auth,wrap,parse,err,z});
+require('./demo')({app,db,auth,wrap,parse,err,log,z});
 const dist=path.join(__dirname,'../frontend/dist');
 if(fs.existsSync(dist)){app.use(express.static(dist));app.get('*',(q,r)=>r.sendFile(path.join(dist,'index.html')))}
 app.listen(process.env.PORT||3000,()=>console.log('POS server started'));
