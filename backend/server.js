@@ -10,7 +10,8 @@ create table if not exists products(id integer primary key,name text not null,sk
 create table if not exists sales(id integer primary key,invoice text unique,user_id integer,subtotal real,discount real,vat real,total real,paid real,method text,customer text,status text default 'completed',idem_key text unique,created_at text default(datetime('now')));
 create table if not exists sale_items(id integer primary key,sale_id integer,product_id integer,name text,qty integer,price real,vat real);
 create table if not exists shifts(id integer primary key,user_id integer,opening real,closing real,opened_at text default(datetime('now')),closed_at text);
-create table if not exists audit(id integer primary key,user_id integer,action text,detail text,at text default(datetime('now')));`);
+create table if not exists audit(id integer primary key,user_id integer,action text,detail text,at text default(datetime('now')));
+create table if not exists app_settings(key text primary key,value text not null);`);
 const log=(u,a,d)=>db.prepare('insert into audit(user_id,action,detail) values(?,?,?)').run(u,a,JSON.stringify(d||{}));
 
 const app=express();app.set('trust proxy',1);app.get('/healthz',(q,r)=>r.json({ok:1}));app.use(helmet({contentSecurityPolicy:{useDefaults:true,directives:{'upgrade-insecure-requests':process.env.HTTPS==='1'?[]:null}}}));app.use(express.json({limit:'100kb'}));
@@ -29,6 +30,10 @@ app.post('/api/login',rateLimit({windowMs:15*60e3,max:10,standardHeaders:true}),
  if(!u||!ok){log(null,'login_fail',{u:d.username});throw err(401,'Invalid username or password')}
  log(u.id,'login');return{token:jwt.sign({id:u.id},SECRET,{expiresIn:'8h'}),user:{id:u.id,username:u.username,role:u.role}}}));
 
+const receiptDefaults={paper:'80',printMode:'manual',name:'Dokan POS',address:'',phone:'',email:'',website:'',logo:'',thankYou:'Thank you for your purchase!',footer:'',showLogo:true,showName:true,showAddress:true,showPhone:true,showEmail:true,showWebsite:false,showCustomer:true,showCashier:true,showProductId:false,showTax:true,showDiscount:true,showPayment:true,showBarcode:false,showThankYou:true,showFooter:true};
+const getReceiptSettings=()=>{const row=db.prepare("select value from app_settings where key='receipt'").get();try{return {...receiptDefaults,...(row?JSON.parse(row.value):{})}}catch{return receiptDefaults}};
+app.get('/api/receipt-settings',auth(),wrap(()=>getReceiptSettings()));
+app.put('/api/receipt-settings',auth('admin'),wrap(req=>{const d={};for(const k of Object.keys(receiptDefaults)){if(req.body[k]!==undefined)d[k]=req.body[k]}if(!['58','80'].includes(String(d.paper??'80')))throw err(400,'Invalid receipt width');if(!['auto','manual'].includes(d.printMode??'manual'))throw err(400,'Invalid print mode');if(typeof d.logo==='string'&&d.logo.length>500000)throw err(400,'Logo is too large');const next={...getReceiptSettings(),...d};db.prepare("insert into app_settings(key,value) values('receipt',?) on conflict(key) do update set value=excluded.value").run(JSON.stringify(next));log(req.user.id,'receipt_settings_update');return next}));
 const same=(a,b)=>a.length===b.length&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));
 app.get('/api/setup/status',wrap(()=>({needed:!db.prepare('select 1 from users').get(),keyRequired:!!process.env.SETUP_KEY})));
 app.post('/api/setup',rateLimit({windowMs:15*60e3,max:10,standardHeaders:true}),wrap(req=>{

@@ -22,3 +22,9 @@ The existing Render blueprint is preserved. It configures a Starter service and 
 - Frontend JSX syntax parsed/transpiled with the installed TypeScript JSX parser.
 - Representative SQLite queries for demo visibility/reporting were checked against a matching schema.
 - A full dependency install and Vite production build could not be run in this environment because npm package downloads are unavailable.
+
+## Receipt customization update
+- Added an admin-only Receipt Settings page with 58mm/80mm paper selection, logo upload/remove, editable business details, show/hide controls, print-mode preference, and live preview.
+- Receipt preferences are stored in the SQLite `app_settings` table through authenticated API endpoints, so settings persist across sessions and devices using the same database.
+- Sales now follow the configured post-payment print mode: Auto opens the browser print dialog; Manual leaves a receipt print action available after the sale. Reprint uses the saved current receipt settings.
+- Browser print dialogs are subject to browser popup/print permissions. This does not provide unattended silent printing; that requires a supported local/thermal printer integration.

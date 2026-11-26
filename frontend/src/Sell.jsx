@@ -63,6 +63,7 @@ export default function Sell() {
     [pend, setPend] = useState(qget().length),
     [cfg, setCfg] = useState(null),
     [ser, setSer] = useState(false);
+  const [receiptCfg,setReceiptCfg]=useState({paper:'80',printMode:'manual'});
   const load = () => {
     api('/products').then(x => {
       setItems(x);
@@ -86,6 +87,7 @@ export default function Sell() {
     if (r.done) load();
   };
   useEffect(() => {
+    api('/receipt-settings').then(setReceiptCfg).catch(()=>{});
     load();
     focus();
     loadCfg().then(setCfg);
@@ -239,7 +241,7 @@ export default function Sell() {
       if (value === '') { setDisc(0); setDiscIn(''); return; }
       const roleMax = isCashier ? 10 : 100;
       const maxPct = sub ? Math.min(roleMax, manualCap / sub * 100) : 0;
-      const pct = maxPct < 1 ? 0 : Math.max(1, Math.min(maxPct, n));
+      const pct = Math.max(0, Math.min(maxPct, n));
       setDisc(r2(Math.min(manualCap, sub * pct / 100)));
       setDiscIn(String(pct));
     } else {
@@ -306,8 +308,8 @@ export default function Sell() {
       });
       beep(1);
       try {
-        await printBytes(build(cfg, L, method === 'cash'), cfg);
-      } catch {}
+        if(receiptCfg.printMode==='auto') receipt(r, lines, total, vat, dFinal+cd, {...receiptCfg,method,paid,customer:cname,cashier:user.username});
+      } catch (e) { console.warn('Receipt print failed',e); }
       clear();
     };
     setBusy(true);
@@ -464,10 +466,10 @@ export default function Sell() {
     <span className={'net ' + (net ? 'on' : 'off')}>{net ? __("● অনলাইন") : __("● অফলাইন")}</span>{pend > 0 && <button className="tb" onClick={sync}>{__("⟳ সিঙ্ক (")}{pend})</button>}</div>
    <div className="cartbox">
     <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setCq(''); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
-     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt(last.r, last.lines, last.total, last.vat, last.disc)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
+     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:cname,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
     {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.undo && <button onClick={e => { e.stopPropagation(); undoVoid(msg.undo); }}>{__('ফিরিয়ে আনুন')}</button>}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
             e.stopPropagation();
-            receipt(last.r, last.lines, last.total, last.vat, last.disc);
+            receipt({...last.r,method:last.method,paid:last.paid,customer:cname,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg);
           }}>{__("🖨 রসিদ প্রিন্ট")}</button>}</div>}
     <div className="th"><div>{__("পণ্য")}</div><div>{__("পরিমাণ")}</div><div>{__("মোট")}</div></div>
     <div className="rows">{!lines.length && <p className="empty">{__("কার্ট খালি — পণ্য স্ক্যান করুন বা ট্যাপ করুন")}</p>}
@@ -534,7 +536,7 @@ export default function Sell() {
    <div className="dh"><b>{__('ডিসকাউন্ট')}</b><button onClick={() => setDiscOpen(false)}><X size={16} /></button></div>
    <div className="pb" style={{ display: 'block' }}>
     <div className="pm"><button className={discMode === 'amt' ? 'on' : ''} onClick={() => { setDiscMode('amt'); setDiscIn(String(disc || '')); }}>{__('টাকা (৳)')}</button><button className={discMode === 'pct' ? 'on' : ''} onClick={() => { setDiscMode('pct'); setDiscIn(sub ? String(r2(disc / sub * 100)) : ''); }}>{__('শতাংশ (%)')}</button></div>
-    <input className="amt" type="number" min={discMode === 'pct' ? 1 : 0} max={discMode === 'pct' ? (isCashier ? 10 : 100) : manualCap} step="0.01" autoFocus value={discIn} onChange={e => updateDiscount(e.target.value)} />
+    <input className="amt" type="number" min={0} max={discMode === 'pct' ? (isCashier ? 10 : 100) : manualCap} step="0.01" autoFocus value={discIn} onChange={e => updateDiscount(e.target.value)} />
     <div className="qk">{(discMode === 'pct' ? [5, 10] : [50, 100, 200]).map(v => <button key={v} onClick={() => updateDiscount(v)}>{discMode === 'pct' ? `${v}%` : tk(v)}</button>)}</div>
     <p>{__('বর্তমান ডিসকাউন্ট')}: <b>{tk(disc + cd)}</b> ({sub ? r2((disc + cd) / sub * 100) : 0}%)</p>
     <p style={{ opacity: .7, fontSize: 12 }}>{isCashier ? __('ক্যাশিয়ার সর্বোচ্চ ১০% ডিসকাউন্ট দিতে পারবেন।') : __('ম্যানেজার/অ্যাডমিন সর্বোচ্চ ১০০% পর্যন্ত ডিসকাউন্ট দিতে পারবেন।')}</p>

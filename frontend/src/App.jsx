@@ -5,6 +5,7 @@ import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer,
 import { Customers, Stock, Finance } from './Extra.jsx';
 import SellPOS from './Sell.jsx';
 import Dash from './Dash.jsx';
+import ReceiptSettings from './ReceiptSettings.jsx';
 import { ProductsPro, Promos, Labels, Reports, Users, CameraScan } from './Extra2.jsx';
 const S = {
     font: 'system-ui,sans-serif'
@@ -56,7 +57,7 @@ export default function App() {
     setTab(u.role !== 'cashier' ? 'dash' : 'pos');
   }} />;
   const mgr = user.role !== 'cashier';
-  const NAV = [['dash', __("ড্যাশবোর্ড"), LayoutDashboard, mgr], ['pos', __("বিক্রি"), ShoppingCart, 1], ['products', __("পণ্য"), Package, mgr], ['cust', __("কাস্টমার"), UsersIcon, 1], ['stock', __("স্টক/সাপ্লায়ার"), Boxes, mgr], ['fin', __("হিসাব"), Wallet, mgr], ['promo', __("কুপন/গিফট"), Tag, mgr], ['labels', __("লেবেল"), Printer, mgr], ['rep2', __("রিপোর্ট"), BarChart3, mgr], ['users', __("ইউজার"), ShieldCheck, user.role === 'admin']];
+  const NAV = [['dash', __("ড্যাশবোর্ড"), LayoutDashboard, mgr], ['pos', __("বিক্রি"), ShoppingCart, 1], ['products', __("পণ্য"), Package, mgr], ['cust', __("কাস্টমার"), UsersIcon, 1], ['stock', __("স্টক/সাপ্লায়ার"), Boxes, mgr], ['fin', __("হিসাব"), Wallet, mgr], ['promo', __("কুপন/গিফট"), Tag, mgr], ['labels', __("লেবেল"), Printer, mgr], ['rep2', __("রিপোর্ট"), BarChart3, mgr], ['users', __("ইউজার"), ShieldCheck, user.role === 'admin'], ['receipt', 'Receipt Settings', Printer, user.role === 'admin']];
   const label = (NAV.find(n => n[0] === tab) || [])[1];
   return <div className={'shell' + (tab === 'pos' ? ' posmode' : '')}>
   <aside className="aside"><div className="brand">{tab === 'pos' ? 'D' : 'Dokan POS'}</div>
@@ -73,7 +74,7 @@ export default function App() {
         setUser(null);
       }}><LogOut size={18} /><span>{__("লগআউট")}</span></button></aside>
   <main className={'main' + (dark ? ' dark' : '')}>{tab === 'pos' ? <SellPOS /> : <><h2 className="ptitle">{label}</h2><div className="page">
-   {tab === 'dash' && <Dash />}{tab === 'products' && <ProductsPro />}{tab === 'promo' && <Promos />}{tab === 'labels' && <Labels />}{tab === 'rep2' && <Reports />}{tab === 'users' && <Users />}{tab === 'cust' && <Customers />}{tab === 'stock' && <Stock />}{tab === 'fin' && <Finance />}</div></>}</main></div>;
+   {tab === 'dash' && <Dash />}{tab === 'products' && <ProductsPro />}{tab === 'promo' && <Promos />}{tab === 'labels' && <Labels />}{tab === 'rep2' && <Reports />}{tab === 'users' && <Users />}{tab === 'receipt' && <ReceiptSettings />}{tab === 'cust' && <Customers />}{tab === 'stock' && <Stock />}{tab === 'fin' && <Finance />}</div></>}</main></div>;
 }
 function LangSwitch({
   style
@@ -236,10 +237,11 @@ const esc = x => String(x).replace(/[&<>"']/g, c => ({
   '"': '&quot;',
   "'": '&#39;'
 })[c]);
-export function receipt(r, lines, total, vat, disc) {
-  const w = window.open('', '_blank', 'width=320,height=600');
-  if (!w) return;
-  w.document.write(`<style>@page{size:80mm auto;margin:2mm}</style><pre style="font:12px monospace;width:76mm;margin:0">${esc(r.invoice)}\n${new Date().toLocaleString()}\n--------------------\n${lines.map(l => esc(`${l.p.name} ${l.p.size || ''} ${l.p.color || ''} x${l.qty}  ${l.p.price * l.qty}`)).join('\n')}\n--------------------\nVAT ${vat.toFixed(2)}  Discount ${disc}\nTOTAL ${total}\n\n${__('ধন্যবাদ!')}</pre>`);
-  w.document.close();
-  w.print();
+export function receipt(r, lines, total, vat, disc, settings = {}) {
+  const s={paper:'80',name:'Dokan POS',showName:true,showLogo:true,showAddress:true,showPhone:true,showEmail:true,showCustomer:true,showCashier:true,showProductId:false,showTax:true,showDiscount:true,showPayment:true,showThankYou:true,thankYou:'Thank you for your purchase!',...settings};
+  const width=s.paper==='58'?'54mm':'76mm'; const w=window.open('','_blank','width=380,height=700'); if(!w)return;
+  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const rows=lines.map(l=>`<div class="item"><span>${esc(l.p.name)}${s.showProductId?`<small><br>${esc(l.p.sku||l.p.id)}</small>`:''}<br>${l.qty} × ${Number(l.p.price).toFixed(2)}</span><b>${(l.p.price*l.qty).toFixed(2)}</b></div>`).join('');
+  w.document.write(`<!doctype html><html><head><title>Receipt ${esc(r.invoice)}</title><style>@page{size:${s.paper}mm auto;margin:2mm}*{box-sizing:border-box}body{font:12px/1.4 Arial,sans-serif;width:${width};margin:0 auto;color:#111}.c{text-align:center}.logo{max-width:65%;max-height:65px;object-fit:contain}.item,.line{display:flex;justify-content:space-between;gap:8px}.item{margin:6px 0;text-align:left}hr{border:0;border-top:1px dashed #555;margin:8px 0}.total{font-size:16px;font-weight:bold}.muted{font-size:11px}</style></head><body><div class="c">${s.showLogo&&s.logo?`<img class="logo" src="${s.logo}">`:''}${s.showName?`<h2>${esc(s.name)}</h2>`:''}${s.showAddress&&s.address?`<div>${esc(s.address)}</div>`:''}${s.showPhone&&s.phone?`<div>${esc(s.phone)}</div>`:''}${s.showEmail&&s.email?`<div>${esc(s.email)}</div>`:''}${s.showWebsite&&s.website?`<div>${esc(s.website)}</div>`:''}</div><hr><div>Invoice: ${esc(r.invoice)}</div><div>${new Date().toLocaleString()}</div>${s.showCustomer?`<div>Customer: ${esc(r.customer||'Walking customer')}</div>`:''}${s.showCashier?`<div>Cashier: ${esc(r.cashier||'')}</div>`:''}<hr><b>PRODUCT / QTY / AMOUNT</b>${rows}<hr><div class="line"><span>Subtotal</span><span>${(total+disc-vat).toFixed(2)}</span></div>${s.showDiscount?`<div class="line"><span>Discount</span><span>-${Number(disc).toFixed(2)}</span></div>`:''}${s.showTax?`<div class="line"><span>VAT / Tax</span><span>${Number(vat).toFixed(2)}</span></div>`:''}<div class="line total"><span>GRAND TOTAL</span><span>${Number(total).toFixed(2)}</span></div>${s.showPayment?`<div class="line"><span>Payment</span><span>${esc(r.method||'')}</span></div>`:''}<div class="line"><span>Paid</span><span>${Number(r.paid??total).toFixed(2)}</span></div>${r.change>0?`<div class="line"><span>Change</span><span>${Number(r.change).toFixed(2)}</span></div>`:''}${r.due>0?`<div class="line"><span>Due</span><span>${Number(r.due).toFixed(2)}</span></div>`:''}${s.showBarcode?`<div class="c" style="letter-spacing:2px;margin:10px">||| || ||| ||||</div>`:''}${s.showThankYou?`<p class="c">${esc(s.thankYou)}</p>`:''}${s.showFooter&&s.footer?`<p class="c muted">${esc(s.footer)}</p>`:''}</body></html>`);
+  w.document.close();w.focus();w.print();
 }
