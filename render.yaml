@@ -19,5 +19,3 @@ services:
         value: "1"
       - key: JWT_SECRET
         generateValue: true
-      - key: SHOP_NAME
-        sync: false

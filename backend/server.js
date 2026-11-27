@@ -119,7 +119,7 @@ app.get('/api/audit',auth('admin'),wrap(()=>db.prepare('select * from audit orde
 
 require('./extra')({app,db,auth,wrap,parse,err,log,z});
 require('./extra2')({app,db,auth,wrap,parse,err,log,z});
-require('./extra3')({app,auth,wrap,parse,err,z});
+
 require('./demo')({app,db,auth,wrap,parse,err,log,z});
 app.use('/api', (req,res)=>res.status(404).json({error:'API endpoint not found: '+req.method+' '+req.originalUrl}));
 const dist=path.join(__dirname,'../frontend/dist');

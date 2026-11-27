@@ -7,14 +7,12 @@ Production: frontend-e `npm run build` korle backend nijei dist serve korbe.
 
 ## Env
 JWT_SECRET (required) | SETUP_KEY (optional) | PORT | DB_FILE | TZ_OFFSET ('+6 hours') | HTTPS=1 (HTTPS-er pichone chalale)
-SHOP_NAME, SHOP_ADDR, SHOP_PHONE  -> receipt header
-PRINTER_HOST, PRINTER_PORT(9100), PRINTER_COLS (80mm=42/48, 58mm=32) -> LAN thermal printer (server theke)
+Receipt header: app-er "Receipt Settings" theke set korun.
 
-## Thermal printer (3 poth)
-1. LAN/Ethernet printer: PRINTER_HOST set korun -> sale-er por auto print + cash drawer open.
-2. USB-serial / Bluetooth printer: Sell screen-e "🖨 প্রিন্টার" chepe port bachun (Chrome/Edge + HTTPS/localhost).
-3. Kono printer connect na thakle: "রসিদ প্রিন্ট" button -> 80mm browser print (Bangla text ey kaj kore).
-Note: ESC/POS receipt-e Bangla akkhor print hoy na; Bangla nam hole SKU print hobe.
+## Receipt printing (browser)
+- Computer-e thermal printer-er driver install korun (USB ba LAN), tarpor "রসিদ প্রিন্ট" chepe browser print dialog theke printer bachun. Bangla lekha print hoy.
+- Receipt Settings-e 58mm/80mm ar auto print bachha jay. Auto print-er jonno site-er pop-up allow korun.
+- Cash drawer lagle printer driver-er cash drawer option check korun (driver onujayi bhinno).
 
 ## Offline mode
 - Internet gele bikri local-e jomা hoy (OFF-xxxx), internet ashle auto sync (idempotent, duplicate hoy na).
@@ -31,3 +29,8 @@ Note: ESC/POS receipt-e Bangla akkhor print hoy na; Bangla nam hole SKU print ho
 
 ## Render persistence
 The included `render.yaml` configures a Starter web service with a 1 GB persistent disk mounted at `/var/data`, and sets `DB_FILE=/var/data/pos.db`. Keep that disk attached to preserve SQLite data across deploys. The blueprint also generates `JWT_SECRET`; do not remove it. The persistent disk is a paid Render feature, not part of the free ephemeral filesystem.
+
+## Test
+Prothome ekbar `npm run build` (ba `npm --prefix backend install`), tarpor `npm test`.
+Test nijer osthayi database banay, ashol data chhoy na. `todo` mane jana somossa (backend/test/known-issues.test.js).
+GitHub-e push korle `.github/workflows/test.yml` nije test chalay.

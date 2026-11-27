@@ -1,3 +1,4 @@
+const crypto=require('crypto');
 module.exports=({app,db,auth,wrap,parse,err,log,z})=>{
  for(const c of ['size','color','category','brand'])try{db.exec(`alter table products add column ${c} text`)}catch{}
  try{db.exec('alter table sales add column customer_id integer')}catch{}

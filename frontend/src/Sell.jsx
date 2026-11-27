@@ -4,7 +4,6 @@ import { Search, Moon, Sun, X, Banknote, Pause, Percent, Trash2, Folder } from '
 import { api, receipt } from './App.jsx';
 import { CameraScan } from './Extra2.jsx';
 import { isNet, qget, qadd, syncQueue, cacheGet, cacheSet } from './offline.js';
-import { build, printBytes, connectSerial, loadCfg } from './printer.js';
 const r2 = n => Math.round(n * 100) / 100,
   tk = n => __("৳") + Number(n || 0).toLocaleString('en-IN');
 const beep = ok => {
@@ -64,9 +63,7 @@ export default function Sell() {
     H = useRef(),
     focus = () => sr.current && sr.current.focus();
   const [net, setNet] = useState(navigator.onLine),
-    [pend, setPend] = useState(qget().length),
-    [cfg, setCfg] = useState(null),
-    [ser, setSer] = useState(false);
+    [pend, setPend] = useState(qget().length);
   const [receiptCfg,setReceiptCfg]=useState({paper:'80',printMode:'manual'});
   const load = () => {
     api('/products').then(x => {
@@ -95,7 +92,6 @@ export default function Sell() {
     api('/loyalty-settings').then(setLoyaltyCfg).catch(()=>{});
     load();
     focus();
-    loadCfg().then(setCfg);
     sync();
     const on = () => {
         setNet(true);
@@ -105,14 +101,6 @@ export default function Sell() {
     addEventListener('online', on);
     addEventListener('offline', off);
     const t = setInterval(sync, 30000);
-    navigator.serial?.getPorts().then(async p => {
-      if (p[0]) {
-        try {
-          await connectSerial(p[0]);
-          setSer(true);
-        } catch {}
-      }
-    });
     return () => {
       removeEventListener('online', on);
       removeEventListener('offline', off);
@@ -488,20 +476,6 @@ export default function Sell() {
       });
     }
   };
-  const connect = async () => {
-    try {
-      await connectSerial();
-      setSer(true);
-      setMsg({
-        t: __("প্রিন্টার সংযুক্ত")
-      });
-    } catch {
-      setMsg({
-        t: __("সংযোগ হয়নি (Chrome/Edge + HTTPS লাগবে; অথবা সার্ভারে PRINTER_HOST সেট করুন)"),
-        err: 1
-      });
-    }
-  };
   const cname = selectedCustomer?.name || __("খুচরা ক্রেতা");
   const customerOptions = cs.filter(c => !cq || `${c.name} ${c.phone || ''}`.toLowerCase().includes(cq.toLowerCase()));
   return <div className={'nx' + (light ? ' light' : '')}>
@@ -512,7 +486,7 @@ export default function Sell() {
     <span className={'net ' + (net ? 'on' : 'off')}>{net ? __("● অনলাইন") : __("● অফলাইন")}</span>{pend > 0 && <button className="tb" onClick={sync}>{__("⟳ সিঙ্ক (")}{pend})</button>}</div>
    <div className="cartbox">
     <div className="toolbox"><input className="customer-search" placeholder={__("নাম/ফোন খুঁজুন")} value={cq} onChange={e => setCq(e.target.value)} /><select value={cust} onChange={e => { setCust(e.target.value); setRedeemPoints(0); setCq(''); setCreditApplied(''); setCreditBalance(0); setVoucherApplied(''); setVoucherBalance(0); }}><option value="">{__("খুচরা ক্রেতা")}</option>{customerOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone || ''}{c.due > 0 ? __(" (বাকি {0})", [c.due]) : ''}</option>)}</select>
-     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:last.customerName||last.r.customer,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button><button onClick={connect}>🖨 {ser ? __("সংযুক্ত") : cfg?.network ? 'LAN' : __("প্রিন্টার")}</button></div>
+     <button title={__("নতুন কাস্টমার")} onClick={addCust}>＋</button>{last && <button onClick={() => receipt({...last.r,method:last.method,paid:last.paid,customer:last.customerName||last.r.customer,cashier:user.username}, last.lines, last.total, last.vat, last.disc, receiptCfg)}>{__("🖨 রসিদ")}</button>}<button onClick={() => setShowHeld(true)}>{__("হোল্ড বিল (")}{held.length})</button><button onClick={() => shift('open')}>{__("শিফট খুলুন")}</button><button onClick={() => shift('close')}>{__("শিফট বন্ধ")}</button></div>
     {loyaltyCfg.enabled && <div className="card" style={{margin:'8px 0',padding:10,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}><b>Reward Points</b>{cust ? <><span>Available: {currentPoints}</span><label>Redeem points <input type="number" min="0" max={Math.min(currentPoints,loyaltyCfg.maxRedeemPoints)} step="1" value={redeemPoints||''} onChange={e=>setRedeemPoints(Math.max(0,Math.floor(Number(e.target.value)||0))) } style={{width:90}} /></label><span>Value: {tk(loyaltyDiscount)}</span><button type="button" onClick={()=>setRedeemPoints(0)} disabled={!redeemPoints}>Clear</button><small>Min {loyaltyCfg.minRedeemPoints}, max {loyaltyCfg.maxRedeemPoints} points per sale</small></> : <span>Select a registered customer to use points</span>}<span style={{marginLeft:'auto'}}>Estimated earn: {estimatedEarnedPoints} pts</span></div>}
     {msg && <div className={'msg' + (msg.err ? ' err' : '')} onClick={() => setMsg(null)}>{msg.t}{msg.undo && <button onClick={e => { e.stopPropagation(); undoVoid(msg.undo); }}>{__('ফিরিয়ে আনুন')}</button>}{msg.change != null && <div className="chg">{__("ফেরত দিন: ")}{tk(msg.change)}{msg.due > 0 && __(" · বাকি {0}", [tk(msg.due)])}</div>}{last && !msg.err && msg.change != null && <button onClick={e => {
             e.stopPropagation();
