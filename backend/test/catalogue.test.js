@@ -32,14 +32,14 @@ describe('পণ্য, supplier, ক্রয়, খরচ', () => {
     const p = await s.product({ stock: 5 });
     await s.post(`/api/products/${p.id}/adjust`, { delta: -2, reason: 'damaged' }, t.manager);
     await s.expect(400, 'POST', `/api/products/${p.id}/adjust`, { token: t.admin, body: { delta: -4, reason: 'damaged' } });
-    assert.equal(s.stock(p.id), 3);
+    assert.equal(await s.stock(p.id), 3);
   });
   test('ক্রয়ে স্টক, ক্রয়মূল্য ও supplier-এর পাওনা বদলায়', async () => {
     const p = await s.product({ stock: 1, cost: 10 });
     const { id } = await s.post('/api/suppliers', { name: 'Dhaka Traders' }, t.manager);
     const r = await s.post('/api/purchases', { supplierId: id, paid: 100, items: [{ id: p.id, qty: 10, cost: 25 }] }, t.manager);
     assert.equal(r.total, 250);
-    assert.equal(s.stock(p.id), 11);
+    assert.equal(await s.stock(p.id), 11);
     const due = async () => (await s.get('/api/suppliers', t.admin)).find(x => x.id === id).due;
     assert.equal(await due(), 150);
     await s.post(`/api/suppliers/${id}/pay`, { amount: 50 }, t.manager);
@@ -52,8 +52,8 @@ describe('পণ্য, supplier, ক্রয়, খরচ', () => {
     await s.expect(400, 'POST', '/api/purchases', { token: t.admin, body: { supplierId: id, paid: 0, items: [{ id: p.id, qty: 5, cost: 1 }, { id: 99999, qty: 1, cost: 1 }] } });
     await s.expect(400, 'POST', '/api/purchases', { token: t.admin, body: { supplierId: id, paid: 10, items: [{ id: p.id, qty: 1, cost: 1 }] } });
     await s.expect(404, 'POST', '/api/purchases', { token: t.admin, body: { supplierId: 9999, paid: 0, items: [{ id: p.id, qty: 1, cost: 1 }] } });
-    assert.equal(s.stock(p.id), 4);
-    assert.equal(s.db(d => d.prepare('select count(*) n from purchases where supplier_id=?').get(id).n), 0);
+    assert.equal(await s.stock(p.id), 4);
+    assert.equal(await s.db(async d => (await d.prepare('select count(*) n from purchases where supplier_id=?').get(id)).n), 0);
   });
   test('খরচ যোগ, তারিখে ছাঁকা, মোছা', async () => {
     await s.post('/api/expenses', { title: 'Rent', amount: 8000, category: 'Rent', date: '2026-01-15' }, t.manager);
@@ -72,5 +72,23 @@ describe('পণ্য, supplier, ক্রয়, খরচ', () => {
     assert.equal((await s.get('/api/exchange/settings', t.cashier)).days, 9);
     await s.expect(400, 'PUT', '/api/receipt-settings', { token: t.admin, body: { paper: '100' } });
     await s.expect(400, 'PUT', '/api/receipt-settings', { token: t.admin, body: { exchangeDays: 999 } });
+  });
+});
+
+describe('ভুল input database পর্যন্ত গেলেও server error নয়', () => {
+  let s, t;
+  before(async () => { s = await start(); t = await s.users(); });
+  after(() => s?.stop());
+
+  test('অদ্ভুত id, তারিখ ও বিশাল সংখ্যা', async () => {
+    await s.expect(404, 'PUT', '/api/products/abc', { token: t.admin, body: { price: 1 } });
+    await s.expect(404, 'GET', '/api/customers/abc/points-ledger', { token: t.admin });
+    await s.expect(404, 'POST', '/api/customers/abc/pay', { token: t.admin, body: { amount: 1 } });
+    await s.expect(400, 'DELETE', '/api/products/99999999999', { token: t.admin });
+    await s.expect(400, 'GET', '/api/expenses?from=hello', { token: t.admin });
+    await s.expect(400, 'GET', '/api/reports/detail?from=2026-13-45', { token: t.admin });
+    await s.expect(400, 'POST', '/api/products', { token: t.admin, body: { name: 'Huge', sku: 'HUGE', price: 1e20 } });
+    await s.expect(400, 'POST', '/api/customers', { token: t.admin, body: { name: 'a\u0000b' } });
+    await s.expect(401, 'POST', '/api/login', { body: { username: "' or 1=1 --", password: 'x' } });
   });
 });

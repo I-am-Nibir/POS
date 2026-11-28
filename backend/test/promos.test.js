@@ -6,7 +6,7 @@ describe('coupon ও gift card', () => {
   let s, t, p;
   before(async () => { s = await start(); t = await s.users(); p = await s.product({ price: 500, stock: 100 }); });
   after(() => s?.stop());
-  const coupon = code => s.db(d => d.prepare('select * from coupons where code=?').get(code));
+  const coupon = code => s.db(async d => await d.prepare('select * from coupons where code=?').get(code));
 
   test('coupon তৈরি, যাচাই, বিক্রিতে ব্যবহার ও সীমা', async () => {
     await s.post('/api/coupons', { code: 'ten', type: 'percent', value: 10, min_total: 400, max_uses: 1 }, t.manager);
@@ -15,13 +15,13 @@ describe('coupon ও gift card', () => {
     assert.deepEqual(await s.get('/api/coupons/check?code=ten&base=500', t.cashier), { discount: 50 });
     await s.expect(400, 'GET', '/api/coupons/check?code=ten&base=399', { token: t.cashier });
     assert.equal((await s.sell([[p, 1]], { coupon: 'ten' })).total, 450);
-    assert.equal(coupon('TEN').used, 1);
+    assert.equal((await coupon('TEN')).used, 1);
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]], { coupon: 'ten' }) });
   });
   test('বিক্রি ব্যর্থ হলে coupon খরচ হয় না', async () => {
     await s.post('/api/coupons', { code: 'ONCE', type: 'fixed', value: 20, max_uses: 1 }, t.admin);
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]], { coupon: 'ONCE', paid: 1 }) });
-    assert.equal(coupon('ONCE').used, 0);
+    assert.equal((await coupon('ONCE')).used, 0);
   });
   test('মেয়াদ শেষ বা বন্ধ coupon চলে না', async () => {
     await s.post('/api/coupons', { code: 'OLD', type: 'fixed', value: 20, expires: '2020-01-01' }, t.admin);

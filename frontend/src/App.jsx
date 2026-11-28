@@ -2,7 +2,7 @@ import {__} from './i18n.js';
 import { rl, srv, lang, setLang } from './i18n.js';
 import { useState, useEffect } from 'react';
 import JsBarcode from 'jsbarcode';
-import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun, ArrowLeftRight, Trophy, ChevronDown, UserRound, CreditCard, Maximize2, Minimize2 } from 'lucide-react';
+import { ShoppingCart, Package, Users as UsersIcon, Boxes, Wallet, Tag, Printer, BarChart3, ShieldCheck, LogOut, LayoutDashboard, Moon, Sun, ArrowLeftRight, Trophy, ChevronDown, UserRound, CreditCard } from 'lucide-react';
 import { Customers, Stock, Finance } from './Extra.jsx';
 import SellPOS from './Sell.jsx';
 import Dash from './Dash.jsx';
@@ -64,29 +64,6 @@ export default function App() {
   });
   const [dark, setDark] = useState(() => localStorage.getItem('dashTheme') === 'dark');
   const [expanded, setExpanded] = useState(() => ({ finance: ['accounts','exchange'].includes(tab), customers: ['cust','loyalty'].includes(tab) }));
-  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
-  const [fullscreenError, setFullscreenError] = useState('');
-  useEffect(() => {
-    const syncFullscreen = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-      setFullscreenError('');
-    };
-    document.addEventListener('fullscreenchange', syncFullscreen);
-    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
-  }, []);
-  const toggleFullscreen = async () => {
-    setFullscreenError('');
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else {
-        const appShell = document.querySelector('.shell');
-        if (!appShell?.requestFullscreen) throw new Error('Fullscreen API unavailable');
-        await appShell.requestFullscreen();
-      }
-    } catch (err) {
-      setFullscreenError(__('এই ব্রাউজারে Full Screen চালু করা যায়নি'));
-    }
-  };
   if (!user) return <Auth onLogin={u => {
     setUser(u);
     setTab(u.role !== 'cashier' ? 'dash' : 'pos');
@@ -109,8 +86,6 @@ export default function App() {
   const label = (allNav.find(n => n.id === tab) || {}).label;
   const renderNavItem = (item, nested=false) => <button key={item.id} className={(tab===item.id?'on ':'')+(nested?'nav-subitem':'')} title={item.label} onClick={()=>setTab(item.id)}><span className="nav-icon"><item.icon size={18} strokeWidth={2.1}/></span><span>{item.label}</span></button>;
   return <div className={'shell' + (tab === 'pos' ? ' posmode' : '')}>
-  <button type="button" className="fullscreen-toggle" onClick={toggleFullscreen} title={isFullscreen ? __('ফুল স্ক্রিন বন্ধ করুন') : __('ফুল স্ক্রিন চালু করুন')} aria-label={isFullscreen ? __('ফুল স্ক্রিন বন্ধ করুন') : __('ফুল স্ক্রিন চালু করুন')}><span>{isFullscreen ? <Minimize2 size={17}/> : <Maximize2 size={17}/>}</span><span>{isFullscreen ? __('Exit Full Screen') : __('Full Screen')}</span></button>
-  {fullscreenError && <div className="fullscreen-error" role="status">{fullscreenError}</div>}
   <aside className="aside"><div className="brand">{tab === 'pos' ? 'D' : 'Dokan POS'}</div>
    {NAV.filter(n=>n.show).map(item=>item.children ? <div className="nav-group" key={item.id}><button className={'nav-parent '+(item.children.some(c=>c.id===tab)?'on':'')} title={item.label} onClick={()=>setExpanded(x=>({...x,[item.id]:!x[item.id]}))}><span className="nav-icon"><item.icon size={18} strokeWidth={2.1}/></span><span>{item.label}</span><ChevronDown className={'nav-chevron '+(expanded[item.id]?'open':'')} size={15}/></button>{expanded[item.id]&&<div className="nav-children">{item.children.filter(c=>c.show).map(c=>renderNavItem(c,true))}</div>}</div> : renderNavItem(item))}
    <div style={{

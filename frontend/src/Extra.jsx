@@ -45,6 +45,17 @@ function Form({
     }}>{e}</span></div>;
 }
 
+const payLabel={cash:'ক্যাশ',bkash:'বিকাশ',nagad:'নগদ (Nagad)',card:'কার্ড',exchange:'এক্সচেঞ্জে সমন্বয়'};
+function printDueReceipt(p){
+  const w=window.open('','_blank','width=380,height=600');if(!w){alert(__('রসিদ খুলতে পপ-আপ অনুমতি দিন'));return}
+  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  const row=(k,v)=>`<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`,tk=n=>'৳'+Number(n).toFixed(2);
+  api('/receipt-settings').catch(()=>({})).then(s=>{
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(p.receipt_no)}</title><style>@page{size:${s.paper==='58'?58:80}mm auto;margin:2mm}body{font:12px/1.6 Arial,sans-serif;width:${s.paper==='58'?54:76}mm;margin:0 auto}h3,p{text-align:center;margin:4px 0}div{display:flex;justify-content:space-between;gap:8px}hr{border:0;border-top:1px dashed #555}</style><h3>${esc(s.name||'Dokan POS')}</h3><p>${esc(s.address)} ${esc(s.phone)}</p><p><b>${esc(__('বাকি আদায়ের রসিদ'))}</b></p><hr>${row(__('রসিদ নম্বর'),p.receipt_no)}${row(__('তারিখ'),new Date(p.created_at.replace(' ','T')+'Z').toLocaleString('en-GB',{timeZone:'Asia/Dhaka'}))}${row(__('কাস্টমার'),p.customer)}${row(__('ফোন'),p.phone||'—')}<hr>${row(__('আগের বাকি'),tk(p.due_before))}${row(__('জমা'),tk(p.amount))}${row(__('এখন বাকি'),tk(p.due_after))}${row(__('মাধ্যম'),__(payLabel[p.method]||p.method))}${row(__('গ্রহণকারী'),p.collected_by_name||'—')}<hr>`);
+    w.document.close();w.focus();w.print();
+  });
+}
+
 export function Customers() {
   const me=JSON.parse(sessionStorage.getItem('u')||'{}');
   const [l,setL]=useState([]);
@@ -53,8 +64,17 @@ export function Customers() {
   const [ledgerData,setLedgerData]=useState(null);
   const [ledgerLoading,setLedgerLoading]=useState(false);
   const [ledgerError,setLedgerError]=useState('');
-  const load=()=>api('/customers').then(setL);
+  const [pay,setPay]=useState(null);
+  const [paying,setPaying]=useState(false);
+  const [lastPayment,setLastPayment]=useState(null);
+  const [payments,setPayments]=useState([]);
+  const canSeePayments=me.role!=='cashier';
+  const load=()=>{api('/customers').then(setL);if(canSeePayments)api('/due-payments').then(setPayments).catch(()=>{})};
   useEffect(()=>{load()},[]);
+  const collect=async()=>{const amount=Number(pay.amount);if(!(amount>0)){alert(__('সঠিক টাকার পরিমাণ লিখুন'));return}
+    setPaying(true);
+    try{const r=await api(`/customers/${pay.id}/pay`,{method:'POST',body:{amount,method:pay.method}});setPay(null);setLastPayment(r.payment);load()}
+    catch(e){alert(e.message)}finally{setPaying(false)}};
   const showLedger=async(customer,tab='credit')=>{
     if(expandedCustomer?.id===customer.id && ledgerTab===tab){setExpandedCustomer(null);setLedgerData(null);return}
     setExpandedCustomer(customer);setLedgerTab(tab);setLedgerData(null);setLedgerError('');setLedgerLoading(true);
@@ -86,16 +106,27 @@ export function Customers() {
     </div>
   </td></tr>;
   return <div>
+    {lastPayment&&<div style={box}>{__('জমা হয়েছে')}: <b>{lastPayment.receipt_no}</b> · {money(lastPayment.amount)} <button style={b} onClick={()=>printDueReceipt(lastPayment)}>{__('রসিদ প্রিন্ট')}</button> <button onClick={()=>setLastPayment(null)}>×</button></div>}
     <Form label={__('কাস্টমার যোগ')} fields={['name','phone']} onSubmit={async f=>{await api('/customers',{method:'POST',body:{name:f.name,phone:f.phone||undefined}});load()}} />
     <div style={{overflowX:'auto'}}><table width="100%"><thead><tr><th align="left">{__('নাম')}</th><th>{__('ফোন')}</th><th>{__('বাকি')}</th><th>{__('পয়েন্ট')}</th><th></th></tr></thead><tbody>
       {l.map(c=><React.Fragment key={c.id}>
         <tr><td>{c.name}</td><td>{c.phone}</td><td>{money(c.due)}</td><td>{c.points||0}</td><td style={{whiteSpace:'nowrap'}}>
           {me.role!=='cashier'&&<button onClick={()=>showLedger(c,'credit')}>{expandedCustomer?.id===c.id?'Hide Ledger':'View Ledger'}</button>}
-          {c.due>0&&<button onClick={async()=>{const a=+prompt(__('কত টাকা পেলেন?'));if(a){try{await api(`/customers/${c.id}/pay`,{method:'POST',body:{amount:a}});load()}catch(e){alert(e.message)}}}}>{__('বাকি আদায়')}</button>}
+          {c.due>0&&<button onClick={()=>{setLastPayment(null);setPay({id:c.id,amount:'',method:'cash'})}}>{__('বাকি আদায়')}</button>}
         </td></tr>
+        {pay?.id===c.id&&<tr><td colSpan="5"><div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',padding:8}}>
+          <b>{c.name}</b>
+          <input type="number" min="0" step="0.01" autoFocus placeholder={__('কত টাকা পেলেন?')} value={pay.amount} onChange={e=>setPay({...pay,amount:e.target.value})} />
+          <select value={pay.method} onChange={e=>setPay({...pay,method:e.target.value})}>{['cash','bkash','nagad','card'].map(m=><option key={m} value={m}>{__(payLabel[m])}</option>)}</select>
+          <button style={b} disabled={paying} onClick={collect}>{__('জমা নিন')}</button>
+          <button onClick={()=>setPay(null)}>{__('বাতিল')}</button>
+        </div></td></tr>}
         {expandedCustomer?.id===c.id&&ledgerPanel(c)}
       </React.Fragment>)}
     </tbody></table></div>
+    {canSeePayments&&<div style={{...box,marginTop:16}}><b>{__('বাকি জমার রেকর্ড')}</b><div style={{overflowX:'auto'}}><table width="100%"><thead><tr>{['রসিদ নম্বর','তারিখ','কাস্টমার','জমা','এখন বাকি','মাধ্যম','গ্রহণকারী'].map(h=><th key={h} align="left">{__(h)}</th>)}<th></th></tr></thead><tbody>
+      {payments.length?payments.map(p=><tr key={p.id}><td>{p.receipt_no}</td><td>{new Date(p.created_at.replace(' ','T')+'Z').toLocaleString('en-GB',{timeZone:'Asia/Dhaka'})}</td><td>{p.customer}</td><td>{money(p.amount)}</td><td>{money(p.due_after)}</td><td>{__(payLabel[p.method]||p.method)}</td><td>{p.collected_by_name||'—'}</td><td><button onClick={()=>printDueReceipt(p)}>{__('রসিদ')}</button></td></tr>):<tr><td colSpan="8">{__('এখনো কোনো জমা নেই')}</td></tr>}
+    </tbody></table></div></div>}
   </div>;
 }
 export function Stock() {

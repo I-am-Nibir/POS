@@ -15,11 +15,11 @@ describe('exchange, store credit, voucher', () => {
   test('বেশি দামের পণ্যে বদল: বাড়তি টাকা ছাড়া হয় না, স্টক বদলায়', async () => {
     const sale = await s.sell([[cheap, 1]]);
     assert.equal((await s.exchange(sale, cheap, mid, { extraPaid: 199 })).status, 400);
-    assert.equal(s.stock(mid.id), 20);
+    assert.equal(await s.stock(mid.id), 20);
     const r = await s.exchange(sale, cheap, mid, { extraPaid: 200 });
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.equal(s.stock(cheap.id), 20);
-    assert.equal(s.stock(mid.id), 19);
+    assert.equal(await s.stock(cheap.id), 20);
+    assert.equal(await s.stock(mid.id), 19);
     assert.ok((await s.get('/api/exchange/history', t.manager)).some(e => e.code === r.body.code));
   });
   test('একই পণ্য দুবার exchange হয় না', async () => {
@@ -48,20 +48,20 @@ describe('exchange, store credit, voucher', () => {
     const code = (await s.exchange(sale, dear, cheap)).body.voucherCode;
     const all = await Promise.all(Array.from({ length: 10 }, () => s.call('POST', '/api/sales', { token: t.admin, body: s.saleBody([[dear, 1]], { customerId: customer, storeCreditCode: code, paid: 100 }) })));
     assert.equal(all.filter(r => r.status === 200).length, 1);
-    assert.equal(s.db(d => d.prepare('select balance from store_credits where code=?').get(code).balance), 0);
+    assert.equal(await s.db(async d => (await d.prepare('select balance from store_credits where code=?').get(code)).balance), 0);
   });
   test('store credit অন্য ছাড়ের সাথে মেশে না; মেয়াদ শেষে চলে না', async () => {
     const sale = await s.sell([[dear, 1]], { customerId: customer });
     const code = (await s.exchange(sale, dear, cheap)).body.voucherCode;
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[mid, 1]], { customerId: customer, storeCreditCode: code, discount: 1 }) });
-    s.db(d => d.prepare("update store_credits set expires_at=datetime('now','-1 day') where code=?").run(code));
+    await s.db(async d => await d.prepare("update store_credits set expires_at=utc_now()-interval '1 day' where code=?").run(code));
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[mid, 1]], { customerId: customer, storeCreditCode: code }) });
   });
   test('customer ছাড়া বিক্রিতে store credit দেওয়া যায় না, কিছুই বদলায় না', async () => {
     const sale = await s.sell([[dear, 1]]);
     assert.equal((await s.exchange(sale, dear, cheap)).status, 400);
-    assert.equal(s.stock(dear.id), 19);
-    assert.equal(s.stock(cheap.id), 20);
+    assert.equal(await s.stock(dear.id), 19);
+    assert.equal(await s.stock(cheap.id), 20);
   });
   test('voucher একবারই ব্যবহার হয়', async () => {
     await s.put('/api/exchange/settings', { lowerPriceMode: 'voucher' }, t.admin);
@@ -90,7 +90,7 @@ describe('exchange, store credit, voucher', () => {
     await s.put('/api/exchange/settings', { excludedCategories: [] }, t.admin);
     const info = await s.get(`/api/exchange/invoice/${sale.invoice}`, t.manager);
     await s.expect(400, 'POST', '/api/exchange', { token: t.admin, body: { invoice: sale.invoice, items: [{ saleItemId: info.lines[0].sale_item_id, qty: 1, condition: 'used' }], replacements: [{ productId: mid.id, qty: 1 }] } });
-    s.db(d => d.prepare("update sales set created_at=datetime('now','-7 days') where id=?").run(sale.id));
+    await s.db(async d => await d.prepare("update sales set created_at=utc_now()-interval '7 days' where id=?").run(sale.id));
     assert.equal((await s.get(`/api/exchange/invoice/${sale.invoice}`, t.admin)).eligible, false);
     assert.equal((await s.exchange(sale, mid, mid)).status, 409);
     await s.expect(404, 'GET', '/api/exchange/invoice/NOPE', { token: t.admin });
@@ -98,9 +98,9 @@ describe('exchange, store credit, voucher', () => {
   });
   test('exchange-এর পর loyalty point সমন্বয় হয়', async () => {
     const sale = await s.sell([[dear, 1]], { customerId: customer });
-    assert.equal(s.customerRow(customer).points, 5);
+    assert.equal((await s.customerRow(customer)).points, 5);
     assert.equal((await s.exchange(sale, dear, cheap)).status, 200);
-    assert.equal(s.customerRow(customer).points, 1);
+    assert.equal((await s.customerRow(customer)).points, 1);
   });
   test('credit setting', async () => {
     assert.equal((await s.put('/api/credit/settings', { expiryDays: 30 }, t.admin)).expiryDays, 30);

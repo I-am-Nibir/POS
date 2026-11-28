@@ -86,16 +86,16 @@ export function ProductsPro() {
       const body = {
         name: f.name,
         sku: f.sku,
-        barcode: str(f.barcode),
+        barcode: str(f.barcode) ?? (id ? null : undefined),
         price: +f.price,
         cost: num(f.cost),
         stock: num(f.stock),
         low_stock: num(f.low_stock),
         vat_rate: num(f.vat_rate),
-        size: str(f.size),
-        color: str(f.color),
-        category: str(f.category),
-        brand: str(f.brand)
+        size: str(f.size) ?? (id ? null : undefined),
+        color: str(f.color) ?? (id ? null : undefined),
+        category: str(f.category) ?? (id ? null : undefined),
+        brand: str(f.brand) ?? (id ? null : undefined)
       };
       await api(id ? '/products/' + id : '/products', {
         method: id ? 'PUT' : 'POST',

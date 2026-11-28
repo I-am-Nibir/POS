@@ -1,9 +1,27 @@
-// প্রতিটা test file নিজের আলাদা server ও অস্থায়ী database চালায়। আসল data কখনো ছোঁয় না।
+// প্রতিটা test server নিজের অস্থায়ী PostgreSQL database বানায় ও শেষে মুছে ফেলে। অন্য database ছোঁয় না।
+// TEST_DATABASE_URL: এমন PostgreSQL server-এর ঠিকানা, যেখানে database বানানোর অনুমতি আছে।
 const { spawn } = require('node:child_process');
 const net = require('node:net'), fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const assert = require('node:assert/strict');
 
+const { createDb } = require('../db/client');
 const PASSWORD = 'Test-pass-123';
+const ADMIN_URL = process.env.TEST_DATABASE_URL || 'postgres://postgres:postgres@127.0.0.1:5432/postgres';
+
+async function tempDatabase() {
+  const name = `dokan_test_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
+  const admin = createDb({ connectionString: ADMIN_URL, max: 1 });
+  await admin.prepare(`create database ${name}`).run();
+  const url = new URL(ADMIN_URL);
+  url.pathname = '/' + name;
+  return {
+    url: url.href,
+    drop: async () => {
+      await admin.prepare(`drop database if exists ${name} with (force)`).run();
+      await admin.close();
+    },
+  };
+}
 const freePort = () => new Promise((ok, no) => {
   const s = net.createServer().on('error', no);
   s.listen(0, () => { const { port } = s.address(); s.close(() => ok(port)); });
@@ -11,8 +29,9 @@ const freePort = () => new Promise((ok, no) => {
 
 async function start(env = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dokan-test-'));
-  const dbFile = path.join(dir, 'pos.db'), port = await freePort();
-  const childEnv = { ...process.env, DB_FILE: dbFile, PORT: String(port), JWT_SECRET: 'test-secret', SETUP_KEY: '', TZ_OFFSET: '', HTTPS: '', ...env };
+  const database = await tempDatabase(), port = await freePort();
+  const direct = createDb({ connectionString: database.url, max: 1 });
+  const childEnv = { ...process.env, DATABASE_URL: database.url, DB_POOL_MAX: '5', PORT: String(port), JWT_SECRET: 'test-secret', SETUP_KEY: '', TZ_OFFSET: '', HTTPS: '', ...env };
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: childEnv, cwd: dir });
   let out = '';
   child.stdout.on('data', d => { out += d; });
@@ -20,6 +39,8 @@ async function start(env = {}) {
   const base = `http://127.0.0.1:${port}`;
   const stop = async () => {
     if (child.exitCode === null) await new Promise(r => { child.once('exit', r); child.kill(); });
+    await direct.close();
+    await database.drop();
     fs.rmSync(dir, { recursive: true, force: true });
   };
   for (let i = 0; ; i++) {
@@ -51,15 +72,11 @@ async function start(env = {}) {
     call('POST', '/api/login', { body: { username, password }, headers: { 'x-forwarded-for': `10.0.${ip >> 8}.${ip++ & 255}` } });
 
   const api = {
-    call, expect, login, stop, dbFile,
+    call, expect, login, stop, databaseUrl: database.url,
     get: (url, token) => expect(200, 'GET', url, { token }),
     post: (url, body, token) => expect(200, 'POST', url, { body, token }),
     put: (url, body, token) => expect(200, 'PUT', url, { body, token }),
-    db(fn) {
-      const Database = require('better-sqlite3');
-      const db = new Database(dbFile);
-      try { return fn(db); } finally { db.close(); }
-    },
+    db: fn => fn(direct), // test থেকে সরাসরি database দেখা বা বদলানো
   };
 
   // admin, manager, cashier তৈরি করে token ফেরত দেয়
@@ -82,8 +99,8 @@ async function start(env = {}) {
   api.customer = async (name = `Customer ${++seq}`) => (await api.post('/api/customers', { name, phone: `017${String(++seq).padStart(8, '0')}` }, api.tokens.admin)).id;
   api.saleBody = (items, extra = {}) => ({ items: items.map(([p, qty]) => ({ id: p.id, qty })), method: 'cash', paid: 100000, key: `test-key-${++seq}-${process.pid}`, ...extra });
   api.sell = (items, extra, token = api.tokens.admin) => api.post('/api/sales', api.saleBody(items, extra), token);
-  api.stock = id => api.db(d => d.prepare('select stock from products where id=?').get(id).stock);
-  api.customerRow = id => api.db(d => d.prepare('select * from customers where id=?').get(id));
+  api.stock = async id => (await direct.prepare('select stock from products where id=?').get(id)).stock;
+  api.customerRow = id => direct.prepare('select * from customers where id=?').get(id);
   api.exchange = async (sale, returned, replacement, extra = {}, qty = 1) => {
     const info = await api.get(`/api/exchange/invoice/${sale.invoice}`, api.tokens.admin);
     const line = info.lines.find(l => l.product_id === returned.id);
@@ -91,4 +108,4 @@ async function start(env = {}) {
   };
   return api;
 }
-module.exports = { start, PASSWORD };
+module.exports = { start, tempDatabase, PASSWORD };

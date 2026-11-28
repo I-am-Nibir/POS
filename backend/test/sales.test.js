@@ -14,9 +14,9 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     assert.equal(r.total, 234);
     assert.equal(r.change, 66);
     assert.equal(r.due, 0);
-    assert.equal(s.stock(a.id), 8);
-    assert.equal(s.stock(b.id), 9);
-    const row = s.db(d => d.prepare('select * from sales where id=?').get(r.id));
+    assert.equal(await s.stock(a.id), 8);
+    assert.equal(await s.stock(b.id), 9);
+    const row = await s.db(async d => await d.prepare('select * from sales where id=?').get(r.id));
     assert.deepEqual([row.subtotal, row.discount, row.vat, row.total], [250, 25, 9, 234]);
   });
   test('একই key দুবার পাঠালে দ্বিতীয় বিক্রি হয় না', async () => {
@@ -24,7 +24,7 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     const first = await s.post('/api/sales', body, t.cashier), again = await s.post('/api/sales', body, t.cashier);
     assert.equal(again.duplicate, true);
     assert.equal(again.invoice, first.invoice);
-    assert.equal(s.stock(p.id), 4);
+    assert.equal(await s.stock(p.id), 4);
   });
   test('স্টকের বেশি, কম টাকা, ভুল input: বিক্রি হয় না, স্টক অপরিবর্তিত', async () => {
     const p = await s.product({ stock: 2 });
@@ -33,7 +33,7 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]], { discount: 101 }) });
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[{ id: 99999 }, 1]]) });
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: { items: [] } });
-    assert.equal(s.stock(p.id), 2);
+    assert.equal(await s.stock(p.id), 2);
   });
   test('cashier সর্বোচ্চ ১০% discount দিতে পারে', async () => {
     const p = await s.product();
@@ -46,16 +46,16 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     const all = await Promise.all(Array.from({ length: 20 }, () => s.call('POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]]) })));
     assert.equal(all.filter(r => r.status === 200).length, 5);
     assert.equal(all.filter(r => r.status === 409).length, 15);
-    assert.equal(s.stock(p.id), 0);
+    assert.equal(await s.stock(p.id), 0);
   });
   test('offline বিক্রি: ৭ দিনের মধ্যে সময় রাখা হয়, পুরোনোটা বাতিল', async () => {
     const p = await s.product({ stock: 1 });
     const at = new Date(Date.now() - 86400000).toISOString();
     const r = await s.sell([[p, 2]], { at }); // offline বিক্রিতে স্টক ঋণাত্মক হতে দেওয়া হয়
-    assert.equal(s.db(d => d.prepare('select created_at from sales where id=?').get(r.id).created_at), at.slice(0, 19).replace('T', ' '));
-    assert.equal(s.stock(p.id), -1);
+    assert.equal(await s.db(async d => (await d.prepare('select created_at from sales where id=?').get(r.id)).created_at), at.slice(0, 19).replace('T', ' '));
+    assert.equal(await s.stock(p.id), -1);
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]], { at: new Date(Date.now() - 8 * 86400000).toISOString() }) });
-    assert.equal(s.stock(p.id), -1);
+    assert.equal(await s.stock(p.id), -1);
   });
   test('বাকি বিক্রি ও বাকি পরিশোধ', async () => {
     const p = await s.product({ price: 200 }), c = await s.customer();
@@ -64,10 +64,10 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     await s.expect(400, 'POST', '/api/sales', { token: t.admin, body: s.saleBody([[p, 1]], { method: 'due', paid: 201, customerId: c }) });
     const r = await s.sell([[p, 1]], { method: 'due', paid: 50, customerId: c });
     assert.equal(r.due, 150);
-    assert.equal(s.customerRow(c).due, 150);
+    assert.equal((await s.customerRow(c)).due, 150);
     await s.expect(400, 'POST', `/api/customers/${c}/pay`, { token: t.manager, body: { amount: 151 } });
     await s.post(`/api/customers/${c}/pay`, { amount: 100 }, t.manager);
-    assert.equal(s.customerRow(c).due, 50);
+    assert.equal((await s.customerRow(c)).due, 50);
     await s.expect(404, 'POST', '/api/customers/9999/pay', { token: t.manager, body: { amount: 1 } });
   });
   test('কাস্টমার তালিকা; একই ফোন দুবার নয়', async () => {
@@ -83,7 +83,7 @@ describe('বিক্রি, স্টক, কাস্টমার, loyalty, s
     assert.equal(second.total, 985);
     assert.equal(second.pointsEarned, 9);
     assert.equal(second.pointsBalance, 14);
-    assert.equal(s.customerRow(c).points, 14);
+    assert.equal((await s.customerRow(c)).points, 14);
     const ledger = await s.get(`/api/customers/${c}/points-ledger`, t.manager);
     assert.equal(ledger.balance, 14);
     assert.deepEqual(ledger.entries.map(e => e.kind).sort(), ['earn', 'earn', 'redeem']);
